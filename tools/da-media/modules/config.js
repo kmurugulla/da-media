@@ -33,7 +33,7 @@ export const CONFIG = {
   
   // Cache settings
   CACHE: {
-    ANALYZED_IMAGES_TTL: 5 * 60 * 1000, // 5 minutes
+    ANALYZED_IMAGES_TTL: 1 * 60 * 1000, // 1 minute instead of 5
     EXTERNAL_ASSETS_TTL: 10 * 60 * 1000, // 10 minutes
   },
   
