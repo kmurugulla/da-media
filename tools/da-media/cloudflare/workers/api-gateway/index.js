@@ -511,6 +511,8 @@ router.get('/health', asyncHandler(handleHealthCheck));
 router.get('/api/debug/kv', asyncHandler(handleDebugKV));
 
 // Image endpoints with improved naming and quality filtering
+router.register('OPTIONS', '/api/images', () => handleCORSPreflight());
+router.register('OPTIONS', '/api/images/high-quality', () => handleCORSPreflight());
 router.get('/api/images', asyncHandler(handleGetImages));
 router.get('/api/images/high-quality', asyncHandler(handleGetHighQualityImages));
 

@@ -25,8 +25,8 @@ export class PreviewModalManager {
     const tabs = document.createElement('div');
     tabs.className = 'device-tabs';
     tabs.innerHTML = `
-      <button class="device-tab active" data-device="desktop" title="Show desktop responsive variant">🖥️ Desktop</button>
-      <button class="device-tab" data-device="tablet" title="Show tablet responsive variant">📟 Tablet</button>
+      <button class="device-tab active" data-device="desktop" title="Show desktop responsive variant">🖥 Desktop</button>
+      <button class="device-tab" data-device="tablet" title="Show tablet responsive variant"><span class="tablet-icon"></span> Tablet</button>
       <button class="device-tab" data-device="mobile" title="Show mobile responsive variant">📱 Mobile</button>
     `;
 

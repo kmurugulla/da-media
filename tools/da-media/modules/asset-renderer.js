@@ -202,9 +202,9 @@ export class AssetRenderer {
     if (asset.type === 'image') {
       // Preview button (for all images)
       const previewBtn = document.createElement('button');
-      previewBtn.className = 'action-btn eye-icon';
-      previewBtn.innerHTML = '👁';
-      previewBtn.title = 'Preview image';
+      previewBtn.className = 'action-btn responsive-preview-icon';
+      previewBtn.innerHTML = '';
+      previewBtn.title = 'Preview responsive variants (mobile, tablet, desktop)';
       previewBtn.onclick = (e) => {
         e.stopPropagation();
         this.showAssetPreview(asset);

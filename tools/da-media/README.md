@@ -2,6 +2,12 @@
 
 AI-powered Media Library Plugin for DA (Document Authoring) that enables intelligent asset discovery through natural language queries and predictive recommendations.
 
+## Interface Overview
+
+![DA Media Library Interface](screenshot.png)
+
+The DA Media Library provides an intuitive interface for managing and discovering assets across your organization's content.
+
 ## Architecture Overview
 
 ```
@@ -26,10 +32,31 @@ tools/da-media/
 └── README.md                    # This file - main plugin documentation
 ```
 
-## Core Features
+## Key Features
+
+### 📚 **Asset Management & Discovery**
+- **Lists Assets Used Across Pages**: View all assets embedded in documents and inserted as links across your site
+- **Current Page Asset Tracking**: See count and details of assets used on the currently opened page
+- **Smart Categorization**: Organized by Internal/External sources and asset types (Images, Videos, Documents)
+- **Natural Language Search**: Find assets using descriptive queries like "hero images for landing pages"
+
+### 🖱️ **Asset Interaction & Insertion**
+- **Click-to-Insert**: Single-click asset insertion directly into your document
+- **External Asset Linking**: Insert external images as clickable links rather than embedded content
+- **Asset Preview**: View assets in responsive mode showing how they appear on desktop, tablet, and mobile
+- **Open in New Tab**: Quick access to view full-resolution assets in separate windows
+
+### 📊 **Usage Analytics & Management**
+- **Asset Usage Tracking**: See exactly which pages use each asset across your site
+- **Usage Page Navigation**: Open pages that use specific assets in new tabs for quick editing
+- **Usage Count Display**: Visual indicators showing how frequently assets are reused
+
+### 🎨 **Interface & User Experience**
+- **Grid and List Views**: Toggle between visual grid and detailed list presentations
+- **Responsive Design**: Optimized interface that works across all device sizes
+- **Real-time Updates**: Asset library updates automatically as content changes
 
 ### 🧠 AI-Powered Discovery
-- **Natural Language Search**: "Show me hero images for SaaS landing pages"
 - **Context-Aware Recommendations**: Based on document analysis
 - **Visual Similarity Search**: Find assets similar to existing ones
 - **Predictive Asset Grid**: AI-recommended assets on plugin open
@@ -42,7 +69,6 @@ tools/da-media/
 
 ### 🗂️ Smart Asset Management
 - **Asset Removal Decision Matrix**: Intelligent cleanup strategies
-- **Usage Analytics**: Track asset performance and reuse
 - **Multi-Tenant Support**: Org/repo isolation
 - **Real-Time Sync**: Instant asset availability
 
