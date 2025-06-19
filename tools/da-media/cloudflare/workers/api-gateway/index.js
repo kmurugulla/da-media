@@ -3,33 +3,34 @@
  * Uses router architecture with essential handlers inline for immediate deployment
  */
 
-import { 
-  CORS_HEADERS, 
-  JSON_HEADERS, 
-  CONFIG, 
-  createSuccessResponse, 
-  createErrorResponse, 
+import {
+  CORS_HEADERS,
+  JSON_HEADERS,
+  CONFIG,
+  createSuccessResponse,
+  createErrorResponse,
   handleCORSPreflight,
   validateMethod,
   checkRateLimit,
   generateCacheKey,
   formatFileSize,
-  logRequest
+  logRequest,
+  asyncHandler,
 } from './utils.js';
 import { APIRouter } from './router.js';
 import { handleHealthCheck } from './handlers/health.js';
 import { handleGetImages, handleGetHighQualityImages } from './handlers/images.js';
 import { handleGetExternalAssets, handleCleanJunkAssets } from './handlers/external-assets.js';
-import { 
-  handleCleanupPreview, 
+import {
+  handleCleanupPreview,
   handleCleanJunkAssets as handleCleanupJunkAssets,
   handleCleanLowQuality,
   handleCleanDuplicates,
-  handleCleanupAnalytics 
+  handleCleanupAnalytics,
 } from './handlers/cleanup.js';
-import { 
+import {
   handleContextAnalysis,
-  handlePersonalizedRecommendations 
+  handlePersonalizedRecommendations,
 } from './handlers/context-analysis.js';
 import { handlePreviewContentScan } from './handlers/preview-scan.js';
 
@@ -51,7 +52,7 @@ router.use(async (request, env, ctx) => {
   const start = Date.now();
   const { method } = request;
   const { pathname } = new URL(request.url);
-  
+
   return null;
 });
 
@@ -67,7 +68,7 @@ function generateHashId(url) {
   let hash1 = 5381;
   let hash2 = 5381;
   let hash3 = 5381;
-  
+
   // Triple DJB2 hash algorithm for maximum entropy
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
@@ -75,57 +76,54 @@ function generateHashId(url) {
     hash2 = ((hash2 << 3) + hash2) ^ char;
     hash3 = ((hash3 << 7) + hash3) + (char * 31);
   }
-  
+
   // Combine all three hashes for maximum collision resistance
   const combined1 = Math.abs(hash1 ^ hash2);
   const combined2 = Math.abs(hash2 ^ hash3);
   const combined3 = Math.abs(hash1 ^ hash3);
-  
+
   // Generate 12-character hex ID for multi-million asset capacity
   const part1 = combined1.toString(16).padStart(4, '0').substring(0, 4);
   const part2 = combined2.toString(16).padStart(4, '0').substring(0, 4);
   const part3 = combined3.toString(16).padStart(4, '0').substring(0, 4);
-  
+
   return `${part1}${part2}${part3}`;
 }
 
 // Fast analyzed images endpoint - optimized for performance
 async function handleAnalyzedImagesFast(request, env) {
   validateMethod(request, ['GET']);
-  
+
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
     const { keys } = await env.DA_MEDIA_KV.list({ prefix: CONFIG.PREFIXES.IMAGE });
-    
+
     // Load all images in parallel for better performance
-    const imagePromises = keys.map(key => 
-      env.DA_MEDIA_KV.get(key.name, 'json')
-    );
-    
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
+
     const imageResults = await Promise.all(imagePromises);
-    const allImages = imageResults.filter(img => img !== null);
-    
+    const allImages = imageResults.filter((img) => img !== null);
+
     const deduplicatedImages = deduplicateImagesByQuality(allImages);
-    
+
     return createSuccessResponse({
       images: deduplicatedImages,
       total: deduplicatedImages.length,
       totalBeforeDeduplication: allImages.length,
-      timestamp: new Date().toISOString()
-    }, { 
+      timestamp: new Date().toISOString(),
+    }, {
       cache: CONFIG.CACHE_TTL.IMAGES,
-      headers: { 'X-Cache': 'MISS' }
+      headers: { 'X-Cache': 'MISS' },
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to load analyzed images'
+      message: 'Failed to load analyzed images',
     });
   }
 }
@@ -133,16 +131,16 @@ async function handleAnalyzedImagesFast(request, env) {
 // Deduplicate images by displayName, prioritizing higher quality URLs
 function deduplicateImagesByQuality(images) {
   const imageMap = new Map();
-  
+
   for (const image of images) {
     const key = image.displayName || image.id;
     const existing = imageMap.get(key);
-    
+
     if (!existing || shouldReplaceImageForQuality(existing, image)) {
       imageMap.set(key, image);
     }
   }
-  
+
   return Array.from(imageMap.values());
 }
 
@@ -150,20 +148,20 @@ function deduplicateImagesByQuality(images) {
 function shouldReplaceImageForQuality(existing, candidate) {
   const existingScore = getImageUrlQualityScore(existing.src);
   const candidateScore = getImageUrlQualityScore(candidate.src);
-  
+
   if (candidateScore > existingScore) {
     return true;
   }
-  
+
   return false;
 }
 
 // Calculate quality score for image URL
 function getImageUrlQualityScore(src) {
   if (!src) return 0;
-  
+
   let score = 0;
-  
+
   // Domain-based scoring (higher is better)
   if (src.includes('dish.scene7.com/is/image/dishenterprise/')) {
     score += 100; // Highest quality - Scene7 enterprise
@@ -182,7 +180,7 @@ function getImageUrlQualityScore(src) {
   } else {
     score += 10; // Relative or unknown URL
   }
-  
+
   // Parameter-based scoring
   if (src.includes('$transparent-png-desktop$')) {
     score += 20; // High quality preset
@@ -191,35 +189,33 @@ function getImageUrlQualityScore(src) {
   } else if (src.includes('optimize=medium')) {
     score += 10; // Optimized
   }
-  
+
   // Avoid placeholder/fake URLs
   if (src.includes('example.com') || src.includes('placeholder')) {
     score -= 50;
   }
-  
+
   return score;
 }
 
 // External assets endpoint
 async function handleExternalAssets(request, env) {
   validateMethod(request, ['GET']);
-  
+
   const url = new URL(request.url);
   const site = url.searchParams.get('site');
   const org = url.searchParams.get('org');
-  
+
   if (!site || !org) {
     return createErrorResponse('Missing required parameters: site and org', {
-      status: CONFIG.HTTP_STATUS.BAD_REQUEST
+      status: CONFIG.HTTP_STATUS.BAD_REQUEST,
     });
   }
 
-
-
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
@@ -228,7 +224,7 @@ async function handleExternalAssets(request, env) {
     const groupedByDomain = {};
 
     // Process images in parallel
-    const imagePromises = keys.map(key => env.DA_MEDIA_KV.get(key.name, 'json'));
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
     const images = await Promise.all(imagePromises);
 
     for (const image of images) {
@@ -238,17 +234,17 @@ async function handleExternalAssets(request, env) {
       if (isExternal) {
         const domain = extractDomain(image.src);
         const category = categorizeAssetDomain(domain);
-        
+
         const assetInfo = {
           ...image,
           domain,
           category,
           migrationPriority: calculateMigrationPriority(domain, category),
-          estimatedSavings: calculateEstimatedSavings(image)
+          estimatedSavings: calculateEstimatedSavings(image),
         };
-        
+
         externalAssets.push(assetInfo);
-        
+
         if (!groupedByDomain[domain]) {
           groupedByDomain[domain] = [];
         }
@@ -259,8 +255,8 @@ async function handleExternalAssets(request, env) {
     const summary = {
       totalExternal: externalAssets.length,
       domains: Object.keys(groupedByDomain).length,
-      highPriority: externalAssets.filter(asset => asset.migrationPriority === 'high').length,
-      estimatedTotalSavings: externalAssets.reduce((sum, asset) => sum + (asset.estimatedSavings || 0), 0)
+      highPriority: externalAssets.filter((asset) => asset.migrationPriority === 'high').length,
+      estimatedTotalSavings: externalAssets.reduce((sum, asset) => sum + (asset.estimatedSavings || 0), 0),
     };
 
     return createSuccessResponse({
@@ -268,13 +264,12 @@ async function handleExternalAssets(request, env) {
       summary,
       externalAssets,
       groupedByDomain,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to fetch external assets'
+      message: 'Failed to fetch external assets',
     });
   }
 }
@@ -282,10 +277,10 @@ async function handleExternalAssets(request, env) {
 // Helper functions for external assets
 function isExternalAsset(src, pageContext) {
   if (!src) return false;
-  
+
   const domain = extractDomain(src);
   const siteDomain = pageContext.site ? `${pageContext.site}--${pageContext.org}` : null;
-  
+
   return domain && !domain.includes(siteDomain);
 }
 
@@ -299,12 +294,12 @@ function extractDomain(url) {
 
 function categorizeAssetDomain(domain) {
   if (!domain) return 'unknown';
-  
+
   if (domain.includes('scene7.com')) return 'scene7';
   if (domain.includes('sling.com') || domain.includes('sling.tv')) return 'sling';
   if (domain.includes('dish.com')) return 'dish';
   if (domain.includes('cdn.')) return 'cdn';
-  
+
   return 'other';
 }
 
@@ -326,15 +321,15 @@ function calculateEstimatedSavings(imageData) {
  */
 async function handleInternalAssets(request, env) {
   validateMethod(request, ['GET']);
-  
+
   const url = new URL(request.url);
   const org = url.searchParams.get('org') || 'da-sites';
   const repo = url.searchParams.get('repo') || 'da-media';
 
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
@@ -342,7 +337,7 @@ async function handleInternalAssets(request, env) {
     const internalAssets = [];
 
     // Process images in parallel
-    const imagePromises = keys.map(key => env.DA_MEDIA_KV.get(key.name, 'json'));
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
     const images = await Promise.all(imagePromises);
 
     for (const image of images) {
@@ -360,9 +355,9 @@ async function handleInternalAssets(request, env) {
           size: image.fileSize || null,
           lastModified: image.lastSeen || new Date().toISOString(),
           altText: image.displayName || extractFilenameFromUrl(image.src),
-          dimensions: image.dimensions || null
+          dimensions: image.dimensions || null,
         };
-        
+
         internalAssets.push(assetInfo);
       }
     }
@@ -372,13 +367,12 @@ async function handleInternalAssets(request, env) {
       total: internalAssets.length,
       page: 1,
       limit: 50,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to fetch internal assets'
+      message: 'Failed to fetch internal assets',
     });
   }
 }
@@ -390,7 +384,7 @@ function extractFilenameFromUrl(url) {
   if (!url) return 'Unknown';
   try {
     const urlObj = new URL(url);
-    const pathname = urlObj.pathname;
+    const { pathname } = urlObj;
     const filename = pathname.split('/').pop() || 'Unknown';
     return filename.split('?')[0]; // Remove query parameters
   } catch (error) {
@@ -403,10 +397,10 @@ function extractFilenameFromUrl(url) {
  */
 function getAssetTypeFromUrl(url) {
   if (!url) return 'unknown';
-  
+
   const filename = extractFilenameFromUrl(url);
   const ext = filename.toLowerCase().split('.').pop();
-  
+
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {
     return 'image';
   }
@@ -416,7 +410,7 @@ function getAssetTypeFromUrl(url) {
   if (['pdf', 'doc', 'docx', 'txt'].includes(ext)) {
     return 'document';
   }
-  
+
   return 'unknown';
 }
 
@@ -427,11 +421,11 @@ function getAssetTypeFromUrl(url) {
 // Debug endpoint for KV inspection
 async function handleDebugKV(request, env) {
   validateMethod(request, ['GET']);
-  
+
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
@@ -444,28 +438,28 @@ async function handleDebugKV(request, env) {
       // Get specific key
       const fullKey = key.startsWith('image:') ? key : `image:${key}`;
       const data = await env.DA_MEDIA_KV.get(fullKey, 'json');
-      
+
       if (!data) {
         return createErrorResponse(`Key not found: ${fullKey}`, {
-          status: CONFIG.HTTP_STATUS.NOT_FOUND
+          status: CONFIG.HTTP_STATUS.NOT_FOUND,
         });
       }
 
       return createSuccessResponse({
         key: fullKey,
-        data: data,
-        timestamp: new Date().toISOString()
+        data,
+        timestamp: new Date().toISOString(),
       });
     }
 
     // List keys with prefix - check both org-aware and legacy
     let keys = [];
-    
+
     if (prefix === 'image:') {
       // For image prefix, check org-aware keys first
       const orgKeys = await env.DA_MEDIA_KV.list({ prefix: 'org:', limit: limit * 2 });
-      const imageKeys = orgKeys.keys.filter(key => key.name.includes(':image:'));
-      
+      const imageKeys = orgKeys.keys.filter((key) => key.name.includes(':image:'));
+
       if (imageKeys.length > 0) {
         keys = imageKeys.slice(0, limit);
       } else {
@@ -478,7 +472,7 @@ async function handleDebugKV(request, env) {
       const result = await env.DA_MEDIA_KV.list({ prefix, limit });
       keys = result.keys;
     }
-    
+
     // Get sample data for first few keys
     const samplePromises = keys.slice(0, 5).map(async (keyInfo) => {
       const data = await env.DA_MEDIA_KV.get(keyInfo.name, 'json');
@@ -488,7 +482,7 @@ async function handleDebugKV(request, env) {
         src: data?.src,
         displayName: data?.displayName,
         isExternal: data?.isExternal,
-        sourceType: data?.sourceType || 'unknown'
+        sourceType: data?.sourceType || 'unknown',
       };
     });
 
@@ -496,78 +490,75 @@ async function handleDebugKV(request, env) {
 
     return createSuccessResponse({
       totalKeys: keys.length,
-      prefix: prefix,
-      keys: keys.map(k => k.name),
-      sampleData: sampleData,
-      timestamp: new Date().toISOString()
+      prefix,
+      keys: keys.map((k) => k.name),
+      sampleData,
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     console.error('Debug KV failed:', error);
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to inspect KV storage'
+      message: 'Failed to inspect KV storage',
     });
   }
 }
 
 // Health endpoint
-router.get('/health', handleHealthCheck);
+router.get('/health', asyncHandler(handleHealthCheck));
 
 // Debug endpoint
-router.get('/api/debug/kv', handleDebugKV);
+router.get('/api/debug/kv', asyncHandler(handleDebugKV));
 
 // Image endpoints with improved naming and quality filtering
-router.get('/api/images', handleGetImages);
-router.get('/api/images/high-quality', handleGetHighQualityImages);
+router.get('/api/images', asyncHandler(handleGetImages));
+router.get('/api/images/high-quality', asyncHandler(handleGetHighQualityImages));
 
 // External assets with improved data quality
-router.get('/api/external-assets', handleGetExternalAssets);
-router.post('/api/external-assets/cleanup', handleCleanJunkAssets);
+router.get('/api/external-assets', asyncHandler(handleGetExternalAssets));
+router.post('/api/external-assets/cleanup', asyncHandler(handleCleanJunkAssets));
 
 // Phase 4: Comprehensive Data Cleanup Endpoints
-router.post('/api/cleanup/preview', handleCleanupPreview);
-router.post('/api/cleanup/junk-assets', handleCleanupJunkAssets);
-router.post('/api/cleanup/low-quality', handleCleanLowQuality);
-router.post('/api/cleanup/duplicates', handleCleanDuplicates);
-router.get('/api/cleanup/analytics', handleCleanupAnalytics);
+router.post('/api/cleanup/preview', asyncHandler(handleCleanupPreview));
+router.post('/api/cleanup/junk-assets', asyncHandler(handleCleanupJunkAssets));
+router.post('/api/cleanup/low-quality', asyncHandler(handleCleanLowQuality));
+router.post('/api/cleanup/duplicates', asyncHandler(handleCleanDuplicates));
+router.get('/api/cleanup/analytics', asyncHandler(handleCleanupAnalytics));
 
 // AI-Powered Context Analysis & Predictive Recommendations
-router.post('/api/analyze-context', handleContextAnalysis);
-router.post('/api/personalized-recommendations', handlePersonalizedRecommendations);
+router.post('/api/analyze-context', asyncHandler(handleContextAnalysis));
+router.post('/api/personalized-recommendations', asyncHandler(handlePersonalizedRecommendations));
 
 // Legacy endpoint (deprecated but maintained for backwards compatibility)
-router.get('/api/analyzed-images-fast', handleAnalyzedImagesFast);
+router.get('/api/analyzed-images-fast', asyncHandler(handleAnalyzedImagesFast));
 
 // Placeholder endpoints that return "coming soon" messages
-const comingSoonHandler = (endpointName) => async (request, env) => {
-  return createSuccessResponse({
-    message: `${endpointName} endpoint - refactoring in progress`,
-    status: 'coming_soon',
-    originalEndpoint: endpointName,
-    timestamp: new Date().toISOString()
-  });
-};
+const comingSoonHandler = (endpointName) => async (request, env) => createSuccessResponse({
+  message: `${endpointName} endpoint - refactoring in progress`,
+  status: 'coming_soon',
+  originalEndpoint: endpointName,
+  timestamp: new Date().toISOString(),
+});
 
 // Internal assets endpoint
-router.get('/api/assets', handleInternalAssets);
-router.get('/api/search', comingSoonHandler('Search'));
-router.post('/api/analyze', comingSoonHandler('Analyze'));
-router.post('/api/track-usage', comingSoonHandler('Usage Tracking - Future User Analytics'));
+router.get('/api/assets', asyncHandler(handleInternalAssets));
+router.get('/api/search', asyncHandler(comingSoonHandler('Search')));
+router.post('/api/analyze', asyncHandler(comingSoonHandler('Analyze')));
+router.post('/api/track-usage', asyncHandler(comingSoonHandler('Usage Tracking - Future User Analytics')));
 
-router.get('/api/usage-analytics', comingSoonHandler('Usage Analytics - User Behavior Insights'));
-router.post('/api/da-webhook', comingSoonHandler('DA Webhook'));
-router.post('/api/analyze-image', comingSoonHandler('Image Analysis'));
-router.post('/api/upload-image', comingSoonHandler('Image Upload'));
-router.post('/api/scan-preview-content', handlePreviewContentScan);
-router.get('/api/test-responsive-extraction', comingSoonHandler('Responsive Extraction Test'));
-router.get('/api/analyzed-images', comingSoonHandler('Analyzed Images'));
-router.delete('/api/analyzed-images/{id}', comingSoonHandler('Delete Images'));
-router.get('/api/get-analysis/*', comingSoonHandler('Get Analysis'));
-router.post('/api/migrate-ids', comingSoonHandler('Migrate IDs'));
-router.post('/api/migrate-to-12char', comingSoonHandler('Migrate to 12-char'));
-router.get('/api/migration-candidates', comingSoonHandler('Migration Candidates'));
-router.post('/api/import-external-asset', comingSoonHandler('Import External Asset'));
+router.get('/api/usage-analytics', asyncHandler(comingSoonHandler('Usage Analytics - User Behavior Insights')));
+router.post('/api/da-webhook', asyncHandler(comingSoonHandler('DA Webhook')));
+router.post('/api/analyze-image', asyncHandler(comingSoonHandler('Image Analysis')));
+router.post('/api/upload-image', asyncHandler(comingSoonHandler('Image Upload')));
+router.post('/api/scan-preview-content', asyncHandler(handlePreviewContentScan));
+router.get('/api/test-responsive-extraction', asyncHandler(comingSoonHandler('Responsive Extraction Test')));
+router.get('/api/analyzed-images', asyncHandler(comingSoonHandler('Analyzed Images')));
+router.delete('/api/analyzed-images/{id}', asyncHandler(comingSoonHandler('Delete Images')));
+router.get('/api/get-analysis/*', asyncHandler(comingSoonHandler('Get Analysis')));
+router.post('/api/migrate-ids', asyncHandler(comingSoonHandler('Migrate IDs')));
+router.post('/api/migrate-to-12char', asyncHandler(comingSoonHandler('Migrate to 12-char')));
+router.get('/api/migration-candidates', asyncHandler(comingSoonHandler('Migration Candidates')));
+router.post('/api/import-external-asset', asyncHandler(comingSoonHandler('Import External Asset')));
 
 // ============================================================================
 // MAIN WORKER EXPORT
@@ -576,28 +567,26 @@ router.post('/api/import-external-asset', comingSoonHandler('Import External Ass
 export default {
   async fetch(request, env, ctx) {
     const startTime = Date.now();
-    
+
     try {
       const response = await router.handle(request, env, ctx);
-      
+
       const duration = Date.now() - startTime;
       response.headers.set('X-Response-Time', `${duration}ms`);
-      
+
       return response;
-      
     } catch (error) {
-      
       return new Response(JSON.stringify({
         error: 'Internal server error',
         message: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }), {
         status: 500,
-        headers: JSON_HEADERS
+        headers: JSON_HEADERS,
       });
     }
-  }
+  },
 };
 
 // Export router for testing
-export { router }; 
+export { router };

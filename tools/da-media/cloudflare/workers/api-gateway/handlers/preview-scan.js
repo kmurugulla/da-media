@@ -4,11 +4,11 @@
  * Called by GitHub Actions when content is published
  */
 
-import { 
-  validateMethod, 
-  createSuccessResponse, 
-  createErrorResponse, 
-  CONFIG 
+import {
+  validateMethod,
+  createSuccessResponse,
+  createErrorResponse,
+  CONFIG,
 } from '../utils.js';
 
 /**
@@ -16,13 +16,15 @@ import {
  */
 export async function handlePreviewContentScan(request, env) {
   validateMethod(request, ['POST']);
-  
+
   try {
-    const { previewUrl, path, site, org, publishedAt, trigger } = await request.json();
-    
+    const {
+      previewUrl, path, site, org, publishedAt, trigger,
+    } = await request.json();
+
     if (!previewUrl || !path || !site || !org) {
       return createErrorResponse('Missing required fields: previewUrl, path, site, org', {
-        status: CONFIG.HTTP_STATUS.BAD_REQUEST
+        status: CONFIG.HTTP_STATUS.BAD_REQUEST,
       });
     }
 
@@ -31,18 +33,18 @@ export async function handlePreviewContentScan(request, env) {
     // Fetch the preview content
     const previewResponse = await fetch(previewUrl, {
       headers: {
-        'User-Agent': 'DA-Media-Library-Scanner/1.0'
-      }
+        'User-Agent': 'DA-Media-Library-Scanner/1.0',
+      },
     });
 
     if (!previewResponse.ok) {
       return createErrorResponse(`Failed to fetch preview content: ${previewResponse.status}`, {
-        status: CONFIG.HTTP_STATUS.BAD_REQUEST
+        status: CONFIG.HTTP_STATUS.BAD_REQUEST,
       });
     }
 
     const htmlContent = await previewResponse.text();
-    
+
     // Extract images from the HTML content
     const extractedImages = await extractImagesFromHTML(htmlContent, {
       path,
@@ -50,7 +52,7 @@ export async function handlePreviewContentScan(request, env) {
       org,
       previewUrl,
       publishedAt,
-      trigger
+      trigger,
     });
 
     // Process and store each image
@@ -64,16 +66,16 @@ export async function handlePreviewContentScan(request, env) {
           site,
           org,
           publishedAt,
-          trigger
+          trigger,
         }, env);
-        
+
         if (processed) {
           processedImages.push(processed);
         }
       } catch (error) {
         errors.push({
           src: imageData.src,
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -86,27 +88,26 @@ export async function handlePreviewContentScan(request, env) {
         site,
         org,
         publishedAt,
-        trigger
+        trigger,
       },
       results: {
         totalImagesFound: extractedImages.length,
         successfullyProcessed: processedImages.length,
-        errors: errors.length
+        errors: errors.length,
       },
       processedImages: processedImages.slice(0, 5), // Show first 5 for debugging
       errors: errors.slice(0, 3), // Show first 3 errors
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     console.log(`✅ Preview scan complete: ${processedImages.length}/${extractedImages.length} images processed`);
 
     return createSuccessResponse(result);
-
   } catch (error) {
     console.error('Preview content scan failed:', error);
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to scan preview content'
+      message: 'Failed to scan preview content',
     });
   }
 }
@@ -116,14 +117,14 @@ export async function handlePreviewContentScan(request, env) {
  */
 async function extractImagesFromHTML(htmlContent, pageContext) {
   const images = [];
-  
+
   // 1. Extract images from img tags
   const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
   let match;
 
   while ((match = imgRegex.exec(htmlContent)) !== null) {
     const src = match[1];
-    
+
     // Skip data URLs, SVGs, and very small images
     if (src.startsWith('data:') || src.includes('.svg') || src.includes('1x1')) {
       continue;
@@ -143,7 +144,7 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
       height: heightMatch ? parseInt(heightMatch[1]) : null,
       context: pageContext.path,
       foundAt: new Date().toISOString(),
-      sourceType: 'img-tag'
+      sourceType: 'img-tag',
     };
 
     images.push(imageData);
@@ -152,17 +153,17 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
   // 2. Extract external asset links from anchor tags
   // Pattern: <a href="https://external-domain.com/image-url">filename.ext</a>
   const externalLinkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*(?:title=["']([^"']*)["'][^>]*)?>(.*?)<\/a>/gi;
-  
+
   while ((match = externalLinkRegex.exec(htmlContent)) !== null) {
     const href = match[1];
     const title = match[2] || '';
     const linkText = match[3];
-    
+
     // Only process external image URLs (not internal links)
     if (href.startsWith('http') && isImageUrl(href)) {
       // Check if link text contains an image filename
       const hasImageExtension = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(linkText.trim());
-      
+
       const imageData = {
         src: decodeHtmlEntities(href),
         originalSrc: decodeHtmlEntities(href),
@@ -172,7 +173,7 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
         context: pageContext.path,
         foundAt: new Date().toISOString(),
         sourceType: 'external-link',
-        linkText: linkText.trim()
+        linkText: linkText.trim(),
       };
 
       images.push(imageData);
@@ -182,13 +183,13 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
   // 3. Additional pattern for external links without filename in link text
   // Pattern: <a href="https://external-domain.com/image-url" title="Alt text">...</a>
   const externalLinkRegex2 = /<a[^>]+href=["']([^"']+)["'][^>]*title=["']([^"']*)["'][^>]*>/gi;
-  
+
   while ((match = externalLinkRegex2.exec(htmlContent)) !== null) {
     const href = match[1];
     const title = match[2];
-    
+
     // Only process external image URLs that we haven't already captured
-    if (href.startsWith('http') && isImageUrl(href) && !images.some(img => img.src === href)) {
+    if (href.startsWith('http') && isImageUrl(href) && !images.some((img) => img.src === href)) {
       const imageData = {
         src: decodeHtmlEntities(href),
         originalSrc: decodeHtmlEntities(href),
@@ -197,14 +198,14 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
         height: null,
         context: pageContext.path,
         foundAt: new Date().toISOString(),
-        sourceType: 'external-link-titled'
+        sourceType: 'external-link-titled',
       };
 
       images.push(imageData);
     }
   }
 
-  console.log(`🔍 Extracted ${images.length} images: ${images.filter(i => i.sourceType === 'img-tag').length} from img tags, ${images.filter(i => i.sourceType.includes('external')).length} from external links`);
+  console.log(`🔍 Extracted ${images.length} images: ${images.filter((i) => i.sourceType === 'img-tag').length} from img tags, ${images.filter((i) => i.sourceType.includes('external')).length} from external links`);
 
   return images;
 }
@@ -236,23 +237,23 @@ async function processImageFromPreview(imageData, pageContext, env) {
         {
           path: pageContext.path,
           context: pageContext.trigger,
-          scannedAt: pageContext.publishedAt
-        }
+          scannedAt: pageContext.publishedAt,
+        },
       ].slice(-10), // Keep last 10 usage records
       // Update sourceType if missing
-      sourceType: existingImage.sourceType || imageData.sourceType || 'img-tag'
+      sourceType: existingImage.sourceType || imageData.sourceType || 'img-tag',
     };
 
     await env.DA_MEDIA_KV.put(kvKey, JSON.stringify(updatedImage));
-    return { 
-      id: imageId, 
-      action: 'updated', 
+    return {
+      id: imageId,
+      action: 'updated',
       displayName: existingImage.displayName,
       src: existingImage.src,
       alt: existingImage.originalAltText || existingImage.displayName,
       isExternal: existingImage.isExternal,
       sourceType: updatedImage.sourceType,
-      dimensions: existingImage.dimensions
+      dimensions: existingImage.dimensions,
     };
   }
 
@@ -265,7 +266,7 @@ async function processImageFromPreview(imageData, pageContext, env) {
     originalAltText: imageData.alt,
     dimensions: {
       width: imageData.width,
-      height: imageData.height
+      height: imageData.height,
     },
     firstSeen: new Date().toISOString(),
     lastSeen: new Date().toISOString(),
@@ -273,30 +274,30 @@ async function processImageFromPreview(imageData, pageContext, env) {
     usedInPages: [{
       path: pageContext.path,
       context: pageContext.trigger,
-      scannedAt: pageContext.publishedAt
+      scannedAt: pageContext.publishedAt,
     }],
     isExternal: isExternalAsset(imageData.src, pageContext),
     source: 'preview-scan',
     scanMetadata: {
       trigger: pageContext.trigger,
       scannedAt: pageContext.publishedAt,
-      previewUrl: pageContext.previewUrl
+      previewUrl: pageContext.previewUrl,
     },
     // Add org/site context
     org: pageContext.org,
-    site: pageContext.site
+    site: pageContext.site,
   };
 
   await env.DA_MEDIA_KV.put(kvKey, JSON.stringify(newImage));
-  return { 
-    id: imageId, 
-    action: 'created', 
+  return {
+    id: imageId,
+    action: 'created',
     displayName: newImage.displayName,
     src: newImage.src,
     alt: newImage.originalAltText || newImage.displayName,
     isExternal: newImage.isExternal,
     sourceType: imageData.sourceType,
-    dimensions: newImage.dimensions
+    dimensions: newImage.dimensions,
   };
 }
 
@@ -311,7 +312,7 @@ function generateImageId(src) {
       return match[1]; // Return just the hash part (40 chars)
     }
   }
-  
+
   // For external images, generate a consistent 40-character hash
   return generateConsistentHash(src);
 }
@@ -327,7 +328,7 @@ function generateConsistentHash(str) {
   let hash3 = 0;
   let hash4 = 0;
   let hash5 = 0;
-  
+
   // Multiple hash passes for better distribution
   for (let i = 0; i < input.length; i++) {
     const char = input.charCodeAt(i);
@@ -337,14 +338,14 @@ function generateConsistentHash(str) {
     hash4 = ((hash4 << 2) + hash4) + (char * 17);
     hash5 = ((hash5 << 4) + hash5) ^ (char * 13);
   }
-  
+
   // Convert to positive integers and create hex strings
   const hex1 = Math.abs(hash1).toString(16).padStart(8, '0').substring(0, 8);
   const hex2 = Math.abs(hash2).toString(16).padStart(8, '0').substring(0, 8);
   const hex3 = Math.abs(hash3).toString(16).padStart(8, '0').substring(0, 8);
   const hex4 = Math.abs(hash4).toString(16).padStart(8, '0').substring(0, 8);
   const hex5 = Math.abs(hash5).toString(16).padStart(8, '0').substring(0, 8);
-  
+
   // Combine to create 40-character hash (same length as AEM hashes)
   return `${hex1}${hex2}${hex3}${hex4}${hex5}`.substring(0, 40);
 }
@@ -361,14 +362,14 @@ function generateDisplayName(imageData, pageContext) {
   // Extract filename from URL
   try {
     const url = new URL(imageData.src);
-    const pathname = url.pathname;
+    const { pathname } = url;
     const filename = pathname.split('/').pop() || 'image';
     const nameWithoutExt = filename.split('.')[0];
-    
+
     // Clean up the name
     return nameWithoutExt
       .replace(/[-_]/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase())
+      .replace(/\b\w/g, (l) => l.toUpperCase())
       .trim() || 'Untitled Image';
   } catch (error) {
     return 'Untitled Image';
@@ -403,7 +404,7 @@ function resolveImageUrl(src, pageContext) {
  */
 function isExternalAsset(src, pageContext) {
   if (!src) return false;
-  
+
   try {
     const url = new URL(src);
     const expectedDomain = `main--${pageContext.site}--${pageContext.org}.aem.page`;
@@ -418,11 +419,11 @@ function isExternalAsset(src, pageContext) {
  */
 function isImageUrl(url) {
   if (!url) return false;
-  
+
   // Check for common image extensions in the URL
   const imageExtensions = /\.(png|jpg|jpeg|gif|webp|svg|bmp|tiff)(\?|$|#)/i;
   if (imageExtensions.test(url)) return true;
-  
+
   // Check for common image service patterns
   const imageServicePatterns = [
     /scene7\.com.*\/is\/image/i,
@@ -430,10 +431,10 @@ function isImageUrl(url) {
     /imagekit\.io/i,
     /cdn\.shopify\.com/i,
     /images\.unsplash\.com/i,
-    /amazonaws\.com.*\.(png|jpg|jpeg|gif|webp)/i
+    /amazonaws\.com.*\.(png|jpg|jpeg|gif|webp)/i,
   ];
-  
-  return imageServicePatterns.some(pattern => pattern.test(url));
+
+  return imageServicePatterns.some((pattern) => pattern.test(url));
 }
 
 /**
@@ -449,7 +450,7 @@ function extractFilenameFromPath(path) {
  */
 function decodeHtmlEntities(text) {
   if (!text) return text;
-  
+
   // Common HTML entities that appear in URLs
   const entityMap = {
     '&#x26;': '&',
@@ -468,14 +469,14 @@ function decodeHtmlEntities(text) {
     '&#x3F;': '?',
     '&#63;': '?',
     '&#x23;': '#',
-    '&#35;': '#'
+    '&#35;': '#',
   };
-  
+
   let decoded = text;
   for (const [entity, char] of Object.entries(entityMap)) {
     decoded = decoded.replace(new RegExp(entity, 'g'), char);
   }
-  
+
   return decoded;
 }
 
@@ -484,19 +485,19 @@ function decodeHtmlEntities(text) {
  */
 function extractFilenameFromUrl(url) {
   if (!url) return 'Untitled Image';
-  
+
   try {
     const urlObj = new URL(url);
-    const pathname = urlObj.pathname;
+    const { pathname } = urlObj;
     const filename = pathname.split('/').pop() || 'image';
-    
+
     // Clean up the name for display
     const nameWithoutExt = filename.split('.')[0];
     return nameWithoutExt
       .replace(/[-_]/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase())
+      .replace(/\b\w/g, (l) => l.toUpperCase())
       .trim() || 'Untitled Image';
   } catch (error) {
     return 'Untitled Image';
   }
-} 
+}

@@ -32,7 +32,7 @@ export class PreviewModalManager {
 
     const imageContainer = document.createElement('div');
     imageContainer.className = 'preview-image-container desktop';
-    
+
     const viewportIndicator = document.createElement('div');
     viewportIndicator.className = 'viewport-indicator';
     viewportIndicator.innerHTML = '<span class="viewport-label">DESKTOP VIEW</span>';
@@ -50,15 +50,15 @@ export class PreviewModalManager {
         window.open(imageUrl, '_blank');
       }
     });
-    
+
     imageContainer.appendChild(imageElement);
 
     const imageInfo = document.createElement('div');
     imageInfo.className = 'preview-info';
-    
+
     const initialDimensions = Utils.getImageDimensionsForDevice(asset, 'desktop');
     const initialFileSize = Utils.getFileSizeForDevice(asset, 'desktop');
-    
+
     imageInfo.innerHTML = `
       <div class="info-grid">
         <div class="info-item">
@@ -91,33 +91,33 @@ export class PreviewModalManager {
 
     tabs.addEventListener('click', (e) => {
       if (e.target.classList.contains('device-tab')) {
-        tabs.querySelectorAll('.device-tab').forEach(tab => tab.classList.remove('active'));
+        tabs.querySelectorAll('.device-tab').forEach((tab) => tab.classList.remove('active'));
         e.target.classList.add('active');
-        
+
         imageElement.classList.add('switching');
         imageContainer.classList.add('switching');
-        
-        const device = e.target.dataset.device;
+
+        const { device } = e.target.dataset;
         imageContainer.className = `preview-image-container ${device} switching`;
-        
+
         const viewportLabel = modal.querySelector('.viewport-label');
         if (viewportLabel) {
           viewportLabel.textContent = `${device.toUpperCase()} VIEW`;
         }
-        
+
         setTimeout(() => {
           const dimensionsSpan = modal.querySelector('#current-dimensions');
           if (dimensionsSpan) {
             const newDimensions = Utils.getImageDimensionsForDevice(asset, device);
             dimensionsSpan.textContent = newDimensions;
           }
-          
+
           const fileSizeSpan = modal.querySelector('#current-file-size');
           if (fileSizeSpan) {
             const newFileSize = Utils.getFileSizeForDevice(asset, device);
             fileSizeSpan.textContent = newFileSize;
           }
-          
+
           setTimeout(() => {
             imageElement.classList.remove('switching');
             imageContainer.className = `preview-image-container ${device}`;
@@ -136,7 +136,7 @@ export class PreviewModalManager {
 
     this.currentModal = overlay;
     document.body.appendChild(overlay);
-    
+
     document.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
 
@@ -145,12 +145,12 @@ export class PreviewModalManager {
     img.className = 'preview-image desktop';
     img.src = asset.url || asset.originalUrl || asset.path;
     img.alt = asset.originalAltText || asset.description || asset.name;
-    
+
     img.onerror = () => {
       img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNiIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+';
       img.alt = 'Image not available';
     };
-    
+
     return img;
   }
 
@@ -167,4 +167,4 @@ export class PreviewModalManager {
       document.removeEventListener('keydown', this.handleKeyDown.bind(this));
     }
   }
-} 
+}

@@ -13,25 +13,30 @@ LOG_LEVEL = "info"
 [[kv_namespaces]]
 binding = "DA_MEDIA_KV"
 id = "ed3a46b6434145f98780134d0fe4a391"
+preview_id = "ed3a46b6434145f98780134d0fe4a391"  # Same as production for development
 
 [[kv_namespaces]]
 binding = "DA_MEDIA_CACHE"
 id = "51b1ed6dee0c43acac749088f89b262d"
+preview_id = "51b1ed6dee0c43acac749088f89b262d"  # Same as production for development
 
 # D1 Database for analytics and metadata
 [[d1_databases]]
 binding = "DA_MEDIA_DB"
 database_name = "da-media-library"
 database_id = "c347f6e8-f5e9-4e74-9876-78a797916a1d"
+preview_database_id = "c347f6e8-f5e9-4e74-9876-78a797916a1d"  # Same as production for development
 
 # R2 Buckets for ML models and cache objects
 [[r2_buckets]]
 binding = "DA_MEDIA_MODELS"
 bucket_name = "da-media-models"
+preview_bucket_name = "da-media-models"  # Same as production for development
 
 [[r2_buckets]]
 binding = "DA_MEDIA_CACHE_R2"
 bucket_name = "da-media-cache"
+preview_bucket_name = "da-media-cache"  # Same as production for development
 
 # AI binding for Cloudflare AI
 [ai]

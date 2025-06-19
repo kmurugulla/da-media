@@ -3,6 +3,7 @@
  * Clean, focused main file that orchestrates specialized modules
  */
 
+// eslint-disable-next-line import/no-unresolved
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import { AssetLoader } from './modules/asset-loader.js';
 import { AssetRenderer } from './modules/asset-renderer.js';
@@ -10,273 +11,332 @@ import { SearchManager } from './modules/search.js';
 import { AssetInsertion } from './modules/asset-insertion.js';
 import { Utils } from './modules/utils.js';
 import { getApiEndpoint } from './modules/config.js';
+import { getDocumentSpecificAssets, filterAssetsByDocumentUsage, updateDocumentUsageCounts } from './modules/document-usage.js';
 
-
+/**
+ * DA Media Library Main Application
+ */
 class DAMediaLibrary {
   constructor() {
-    // Get the correct API endpoint
-    const apiEndpoint = getApiEndpoint();
-    
-    // Initialize modules
-    this.assetLoader = new AssetLoader(apiEndpoint);
-    this.assetRenderer = new AssetRenderer();
-    this.searchManager = new SearchManager();
-    this.assetInsertion = new AssetInsertion();
-    
-    // State
     this.assets = [];
     this.filteredAssets = [];
     this.currentView = 'grid';
-    this.currentFilter = 'all';
-    
-    // DOM elements
-    this.assetsGrid = null;
-    this.searchInput = null;
+    this.currentFolder = 'all';
+    this.isLoading = false;
+
+    this.assetLoader = new AssetLoader(getApiEndpoint());
+    this.assetRenderer = new AssetRenderer();
+    this.assetInsertion = new AssetInsertion();
+    this.searchManager = new SearchManager();
+
+    this.containers = {
+      assetsContainer: null,
+      folderTree: null,
+      documentInfo: null,
+      searchInput: null,
+    };
   }
 
   /**
    * Initialize the media library
    */
   async init() {
+    // Get context and actions from DA SDK
     try {
-      // Initialize DA SDK and asset insertion
-      await this.initializeDASDK();
-      
-      this.initializeDOM();
-      this.setupEventHandlers();
-      this.searchManager.init(() => this.handleSearch());
-      
-      // Connect asset renderer to asset insertion
-      this.assetRenderer.init(this.assetInsertion);
-      
-      await this.loadAssets();
-      this.updateUI();
+      const { context, actions } = await DA_SDK;
+      this.context = context;
+      this.actions = actions;
+
+      // Store context in localStorage for other modules to use
+      if (context?.org && context?.repo) {
+        localStorage.setItem('da_media_context', JSON.stringify({
+          org: context.org,
+          repo: context.repo,
+        }));
+      }
     } catch (error) {
-      console.error('Failed to initialize DA Media Library:', error);
-      this.showError('Failed to initialize media library');
+      console.warn('DA SDK not available, using fallback context');
+      this.context = null;
+      this.actions = null;
+    }
+
+    this.initializeContainers();
+    this.initializeEventListeners();
+
+    // Initialize asset insertion with DA SDK actions
+    this.assetInsertion.init(this.actions);
+
+    // Initialize asset renderer with asset insertion
+    this.assetRenderer.init(this.assetInsertion);
+
+    this.searchManager.init(this.handleSearch.bind(this));
+
+    await this.loadAssets();
+    this.renderInitialState();
+  }
+
+  /**
+   * Initialize DOM containers
+   */
+  initializeContainers() {
+    this.containers = {
+      assetsContainer: document.getElementById('assetsContainer'),
+      assetsGrid: document.getElementById('assetsGrid'),
+      folderTree: document.getElementById('folderTree'),
+      searchInput: document.getElementById('nlpSearch'),
+    };
+
+    const missingContainers = Object.entries(this.containers)
+      .filter(([, element]) => !element)
+      .map(([name]) => name);
+
+    if (missingContainers.length > 0) {
+      // Missing DOM elements
     }
   }
 
   /**
-   * Initialize DA SDK for asset insertion
+   * Initialize event listeners
    */
-  async initializeDASDK() {
-    try {
-      const { actions } = await DA_SDK;
-      this.assetInsertion.init(actions);
-    } catch (error) {
-      // DA SDK not available - insertion will be disabled
-    }
-  }
+  initializeEventListeners() {
+    const gridViewBtn = document.getElementById('gridViewBtn');
+    const listViewBtn = document.getElementById('listViewBtn');
 
-  /**
-   * Initialize DOM references
-   */
-  initializeDOM() {
-    this.assetsGrid = document.getElementById('assetsGrid');
-    this.searchInput = document.getElementById('nlpSearch');
-    
-    if (!this.assetsGrid) {
-      throw new Error('Required DOM element #assetsGrid not found');
+    if (gridViewBtn) {
+      gridViewBtn.addEventListener('click', () => this.setView('grid'));
     }
-  }
 
-  /**
-   * Setup event handlers
-   */
-  setupEventHandlers() {
-    // View controls
-    document.querySelectorAll('.view-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        this.switchView(btn.dataset.view);
+    if (listViewBtn) {
+      listViewBtn.addEventListener('click', () => this.setView('list'));
+    }
+
+    if (this.containers.searchInput) {
+      this.containers.searchInput.addEventListener('input', this.handleSearch.bind(this));
+    }
+
+    // Add event listeners for all sidebar filters (both sections)
+    const allFolderTrees = document.querySelectorAll('.folder-tree');
+    allFolderTrees.forEach((folderTree) => {
+      folderTree.addEventListener('click', (e) => {
+        const folderItem = e.target.closest('.folder-item');
+        if (folderItem) {
+          const filter = folderItem.dataset.filter;
+          if (filter) {
+            this.setFolder(filter);
+            // Update active state across all folder trees
+            allFolderTrees.forEach((tree) => {
+              tree.querySelectorAll('.folder-item').forEach((item) => {
+                item.classList.remove('active');
+              });
+            });
+            folderItem.classList.add('active');
+          }
+        }
       });
     });
-
-    // Folder filters
-    document.querySelectorAll('.folder-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        this.applyFilter(item.dataset.filter);
-      });
-    });
-
-    // Search is now handled by SearchManager in init()
   }
 
   /**
-   * Load assets using the asset loader module
+   * Load assets from data source
    */
   async loadAssets() {
+    if (this.isLoading) return;
+
+    this.isLoading = true;
+    this.showLoadingState();
+
     try {
-      this.assetRenderer.showLoadingState(this.assetsGrid);
-      
-      // Load assets using the working approach
       this.assets = await this.assetLoader.loadAllAssets();
       this.filteredAssets = [...this.assets];
-      
-      // Update search manager with loaded assets
+
       this.searchManager.updateAssets(this.assets);
-      
-      console.log(`✅ Loaded ${this.assets.length} assets`);
-      
+      this.updateFolderTree();
     } catch (error) {
-      console.error('Failed to load assets:', error);
-      this.assets = [];
-      this.filteredAssets = [];
-      this.showError('Failed to load assets');
+      this.showErrorState(error);
+    } finally {
+      this.isLoading = false;
     }
   }
 
   /**
-   * Update UI after asset loading or filtering
+   * Render initial application state
    */
-  updateUI() {
+  renderInitialState() {
     this.renderAssets();
-    this.updateSidebarCounts();
-    this.updateDocumentInfo();
+    this.updateFolderTree();
   }
 
   /**
-   * Render assets using the asset renderer
-   */
-  renderAssets() {
-    const isListView = this.currentView === 'list';
-    this.assetRenderer.renderAssets(this.filteredAssets, this.assetsGrid, isListView);
-  }
-
-  /**
-   * Switch between grid and list views
-   */
-  switchView(view) {
-    this.currentView = view;
-    
-    // Update button states
-    document.querySelectorAll('.view-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.view === view);
-    });
-    
-    this.renderAssets();
-  }
-
-  /**
-   * Apply folder-based filtering
-   */
-  applyFilter(filter) {
-    this.currentFilter = filter;
-    
-    // Update folder item states
-    document.querySelectorAll('.folder-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.filter === filter);
-    });
-    
-    // Filter assets
-    switch (filter) {
-      case 'all':
-        this.filteredAssets = [...this.assets];
-        break;
-      case 'internal':
-        this.filteredAssets = this.assets.filter(asset => !asset.isExternal);
-        break;
-      case 'external':
-        this.filteredAssets = this.assets.filter(asset => asset.isExternal);
-        break;
-      case 'image':
-        this.filteredAssets = this.assets.filter(asset => asset.type === 'image');
-        break;
-      case 'video':
-        this.filteredAssets = this.assets.filter(asset => asset.type === 'video');
-        break;
-      case 'document':
-        this.filteredAssets = this.assets.filter(asset => asset.type === 'document');
-        break;
-      default:
-        this.filteredAssets = [...this.assets];
-    }
-    
-    this.renderAssets();
-    this.updateSidebarCounts();
-  }
-
-  /**
-   * Handle search functionality using SearchManager
+   * Handle search input
    */
   handleSearch() {
-    const query = this.searchInput?.value.trim() || '';
-    
-    if (!query) {
-      this.filteredAssets = [...this.assets];
-    } else {
-      this.filteredAssets = this.searchManager.performSearch(query);
-    }
-    
+    const query = this.containers.searchInput?.value || '';
+    this.filteredAssets = this.searchManager.performSearch(query);
     this.renderAssets();
-    
-    const breadcrumb = document.querySelector('.breadcrumb');
-    if (breadcrumb) {
-      if (!query) {
-        breadcrumb.textContent = 'All Assets';
-      } else {
-        breadcrumb.textContent = `Search: "${query}" (${this.filteredAssets.length} results)`;
-      }
-    }
+    this.updateFolderTree();
   }
 
   /**
-   * Update sidebar asset counts
+   * Set view mode (grid or list)
    */
-  updateSidebarCounts() {
-    const counts = {
-      total: this.assets.length,
-      internal: this.assets.filter(asset => !asset.isExternal).length,
-      external: this.assets.filter(asset => asset.isExternal).length,
-      images: this.assets.filter(asset => asset.type === 'image').length,
-      videos: this.assets.filter(asset => asset.type === 'video').length,
-      documents: this.assets.filter(asset => asset.type === 'document').length
+  setView(view) {
+    this.currentView = view;
+
+    const gridBtn = document.getElementById('gridViewBtn');
+    const listBtn = document.getElementById('listViewBtn');
+
+    if (gridBtn && listBtn) {
+      gridBtn.classList.toggle('active', view === 'grid');
+      listBtn.classList.toggle('active', view === 'list');
+    }
+
+    this.renderAssets();
+  }
+
+  /**
+   * Set current folder filter
+   */
+  setFolder(folder) {
+    this.currentFolder = folder;
+
+    if (folder === 'all') {
+      this.filteredAssets = [...this.assets];
+    } else if (folder === 'internal') {
+      // Filter for internal assets (non-external)
+      this.filteredAssets = this.assets.filter((asset) => !asset.isExternal);
+    } else if (folder === 'external') {
+      // Filter for external assets
+      this.filteredAssets = this.assets.filter((asset) => asset.isExternal);
+    } else if (folder === 'image' || folder === 'video' || folder === 'document') {
+      // Filter by asset type
+      this.filteredAssets = this.assets.filter((asset) => asset.type === folder);
+    } else if (folder === 'used-on-page' || folder === 'used-internal' || folder === 'used-external') {
+      this.filteredAssets = filterAssetsByDocumentUsage(this.assets, this.context, folder);
+    } else {
+      // Filter by category
+      this.filteredAssets = this.assets.filter((asset) => asset.category === folder);
+    }
+
+    this.updateFolderTreeSelection();
+    this.renderAssets();
+  }
+
+  /**
+   * Render assets in current view
+   */
+  renderAssets() {
+    if (!this.containers.assetsGrid) return;
+
+    const isListView = this.currentView === 'list';
+    this.assetRenderer.renderAssets(this.filteredAssets, this.containers.assetsGrid, isListView);
+  }
+
+  /**
+   * Update folder tree navigation
+   */
+  updateFolderTree() {
+    if (!this.containers.folderTree) return;
+
+    // Update counts for static filters
+    const allCount = this.assets.length;
+    const internalCount = this.assets.filter((asset) => !asset.isExternal).length;
+    const externalCount = this.assets.filter((asset) => asset.isExternal).length;
+    const imageCount = this.assets.filter((asset) => asset.type === 'image').length;
+    const videoCount = this.assets.filter((asset) => asset.type === 'video').length;
+    const documentCount = this.assets.filter((asset) => asset.type === 'document').length;
+
+    // Update counts for document-specific filters
+    const documentCounts = updateDocumentUsageCounts(this.assets, this.context);
+
+    // Update counts in existing HTML elements
+    const totalCountEl = document.getElementById('totalCount');
+    const internalCountEl = document.getElementById('internalCount');
+    const externalCountEl = document.getElementById('externalCount');
+    const imageCountEl = document.getElementById('imageCount');
+    const videoCountEl = document.getElementById('videoCount');
+    const documentCountEl = document.getElementById('documentCount');
+
+    if (totalCountEl) totalCountEl.textContent = allCount;
+    if (internalCountEl) internalCountEl.textContent = internalCount;
+    if (externalCountEl) externalCountEl.textContent = externalCount;
+    if (imageCountEl) imageCountEl.textContent = imageCount;
+    if (videoCountEl) videoCountEl.textContent = videoCount;
+    if (documentCountEl) documentCountEl.textContent = documentCount;
+  }
+
+  /**
+   * Update folder tree selection
+   */
+  updateFolderTreeSelection() {
+    if (!this.containers.folderTree) return;
+
+    this.containers.folderTree.querySelectorAll('.folder-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.filter === this.currentFolder);
+    });
+  }
+
+
+  /**
+   * Get asset categories with counts
+   */
+  getAssetCategories() {
+    const categoryMap = new Map();
+
+    this.filteredAssets.forEach((asset) => {
+      const category = asset.category || 'uncategorized';
+      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+    });
+
+    return Array.from(categoryMap.entries())
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Get icon for category
+   */
+  getCategoryIcon(category) {
+    const iconMap = {
+      hero: '🎯',
+      gallery: '🖼️',
+      internal: '🏠',
+      navigation: '🧭',
+      external: '🌐',
+      team: '👥',
+      product: '📦',
+      uncategorized: '📁',
     };
-
-    // Update count elements
-    const updateCount = (id, count) => {
-      const element = document.getElementById(id);
-      if (element) element.textContent = count;
-    };
-
-    updateCount('totalCount', counts.total);
-    updateCount('internalCount', counts.internal);
-    updateCount('externalCount', counts.external);
-    updateCount('imageCount', counts.images);
-    updateCount('videoCount', counts.videos);
-    updateCount('documentCount', counts.documents);
+    return iconMap[category] || '📁';
   }
 
   /**
-   * Update document info in sidebar
+   * Format category name for display
    */
-  updateDocumentInfo() {
-    const pathEl = document.getElementById('documentPath');
-    const assetCountEl = document.getElementById('documentImageCount');
+  formatCategoryName(category) {
+    return category.charAt(0).toUpperCase() + category.slice(1).replace(/[-_]/g, ' ');
+  }
 
-    if (pathEl) {
-      const currentPath = Utils.getCurrentDocumentPath();
-      pathEl.textContent = currentPath || '/demo';
-    }
-
-    if (assetCountEl) {
-      // Count assets actually used in the current document
-      const currentPath = Utils.getCurrentDocumentPath() || '/demo';
-      const currentDocumentAssets = this.assets.filter(asset => 
-        asset.usedInCurrentDocument || 
-        (asset.usedInPages && asset.usedInPages.some(page => page.path === currentPath))
-      );
-      assetCountEl.textContent = currentDocumentAssets.length;
+  /**
+   * Show loading state
+   */
+  showLoadingState() {
+    if (this.containers.assetsGrid) {
+      this.assetRenderer.showLoadingState(this.containers.assetsGrid);
     }
   }
 
   /**
-   * Show error message
+   * Show error state
    */
-  showError(message) {
-    console.error(message);
-    if (this.assetsGrid) {
-      this.assetsGrid.innerHTML = `<div class="error">❌ ${message}</div>`;
+  showErrorState(error) {
+    if (this.containers.assetsGrid) {
+      this.containers.assetsGrid.innerHTML = `
+        <div class="error-state">
+          <h3>Failed to load assets</h3>
+          <p>${error.message}</p>
+          <button onclick="location.reload()">Retry</button>
+        </div>
+      `;
     }
   }
 }
@@ -292,4 +352,4 @@ class DAMediaLibrary {
     window.daMediaLibrary = new DAMediaLibrary();
     await window.daMediaLibrary.init();
   }
-})(); 
+}());

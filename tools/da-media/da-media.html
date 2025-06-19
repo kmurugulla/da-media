@@ -10,7 +10,8 @@
     <!-- Adobe Styles -->
     <link rel="stylesheet" href="https://use.typekit.net/hah7vzn.css">
     <!-- DA Media Library Styles -->
-    <link rel="stylesheet" href="da-media.css">
+    <link rel="stylesheet" href="/tools/da-media/da-media.css">
+
   </head>
   <body>
     <div class="media-library">
@@ -22,7 +23,7 @@
         
         <div class="sidebar-section">
           <div class="section-header">All Assets</div>
-          <div class="folder-tree" role="list">
+          <div class="folder-tree" id="folderTree" role="list">
             <div class="folder-item active" data-filter="all" role="listitem" tabindex="0" aria-selected="true">
               <span class="folder-icon" aria-hidden="true">📁</span>
               <span class="folder-name">All Assets</span>
@@ -63,26 +64,27 @@
         </div>
 
         <div class="sidebar-section">
-          <div class="document-info">
-            <div class="document-info-header">
-              <h3 class="document-info-title">Current Document</h3>
+          <div class="section-header">Used on This Page</div>
+          <div class="folder-tree" role="list">
+            <div class="folder-item" data-filter="used-on-page" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">📋</span>
+              <span class="folder-name">All Used</span>
+              <span class="asset-count" id="usedOnPageCount" aria-label="Assets used on current page">0</span>
             </div>
-            
-            <div class="info-section">
-              <div class="info-label">
-                Path
-              </div>
-              <div class="info-value path-value" id="documentPath">Loading...</div>
+            <div class="folder-item" data-filter="used-internal" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🏠</span>
+              <span class="folder-name">Internal Used</span>
+              <span class="asset-count" id="usedInternalCount" aria-label="Internal assets used on current page">0</span>
             </div>
-            
-            <div class="info-section">
-              <div class="info-label">
-                No. Of Assets
-              </div>
-              <div class="info-value count-value" id="documentImageCount">0</div>
+            <div class="folder-item" data-filter="used-external" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🌐</span>
+              <span class="folder-name">External Used</span>
+              <span class="asset-count" id="usedExternalCount" aria-label="External assets used on current page">0</span>
             </div>
           </div>
         </div>
+
+
       </aside>
 
       <!-- Main Content Area -->
@@ -106,8 +108,8 @@
             </div>
           </div>
           <div class="view-controls" role="group" aria-label="View controls">
-            <button class="view-btn active" data-view="grid" title="Grid View" aria-pressed="true">⊞</button>
-            <button class="view-btn" data-view="list" title="List View" aria-pressed="false">☰</button>
+            <button class="view-btn active" id="gridViewBtn" data-view="grid" title="Grid View" aria-pressed="true">⊞</button>
+            <button class="view-btn" id="listViewBtn" data-view="list" title="List View" aria-pressed="false">☰</button>
           </div>
         </div>
 
@@ -117,7 +119,7 @@
         </nav>
 
         <!-- Assets Grid -->
-        <div class="assets-container">
+        <div class="assets-container" id="assetsContainer">
           <div class="assets-grid" id="assetsGrid" role="grid" aria-label="Asset grid">
             <div class="loading" role="status" aria-live="polite">
               Loading assets...

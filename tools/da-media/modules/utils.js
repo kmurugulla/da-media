@@ -12,136 +12,141 @@ export class Utils {
   }
 
   static normalizeDocumentPath(path) {
-    if (!path) return null;
-    return path.startsWith('/') ? path : '/' + path;
+    if (!path) return '';
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
   }
 
   static extractFilenameFromUrl(url) {
     if (!url) return 'Unknown';
+
     try {
       const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      const filename = pathname.split('/').pop() || 'Unknown';
-      return filename.split('?')[0];
-    } catch (error) {
-      return 'Unknown';
+      const path = urlObj.pathname;
+      const filename = path.substring(path.lastIndexOf('/') + 1);
+      return filename || 'Unknown';
+    } catch {
+      const parts = url.split('/');
+      return parts[parts.length - 1] || 'Unknown';
     }
   }
 
   static formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
+    if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return `${(bytes / (k ** i)).toFixed(1)} ${sizes[i]}`;
   }
 
   static formatDate(dateString) {
-    if (!dateString) return 'Never';
+    if (!dateString) return 'Unknown';
     try {
       return new Date(dateString).toLocaleDateString();
-    } catch (error) {
-      return 'Invalid Date';
+    } catch {
+      return 'Unknown';
     }
   }
 
   static extractExtensionFromSrc(src) {
-    const match = src.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i);
-    return match ? match[1].toLowerCase() : 'jpg';
+    if (!src) return '';
+    const match = src.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+    return match ? match[1].toLowerCase() : '';
   }
 
   static detectTypeFromExtension(extension) {
-    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    const vectorExts = ['svg'];
-    
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+    const videoExts = ['mp4', 'webm', 'avi', 'mov', 'wmv'];
+    const docExts = ['pdf', 'doc', 'docx', 'txt', 'rtf'];
+
     if (imageExts.includes(extension)) return 'image';
-    if (vectorExts.includes(extension)) return 'icon';
-    
-    return 'image';
+    if (videoExts.includes(extension)) return 'video';
+    if (docExts.includes(extension)) return 'document';
+    return 'unknown';
   }
 
   static resolveAssetUrl(src) {
     if (!src) return null;
-    
+
     if (src.startsWith('http://') || src.startsWith('https://')) {
       return src;
     }
-    
-    if (src.startsWith('./')) {
-      const org = 'kmurugulla';
-      const site = 'da-media';
-      return `https://main--${site}--${org}.aem.page${src.substring(1)}`;
+
+    if (src.startsWith('//')) {
+      return `https:${src}`;
     }
-    
+
     if (src.startsWith('/')) {
-      const org = 'kmurugulla';
-      const site = 'da-media';
-      return `https://main--${site}--${org}.aem.page${src}`;
+      return `${window.location.origin}${src}`;
     }
-    
-    return Utils.resolveAssetUrl('./' + src);
+
+    const currentPath = window.location.pathname;
+    const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+    return `${window.location.origin}${basePath}${src}`;
   }
 
   static getCurrentDocumentPath() {
-    if (window.daSDK?.context?.path) {
-      return Utils.normalizeDocumentPath(window.daSDK.context.path);
+    try {
+      const path = window.location.pathname;
+      return path.endsWith('/') ? path.slice(0, -1) : path;
+    } catch {
+      return '';
     }
-    
-    const currentPath = window.location.pathname;
-    if (currentPath && !currentPath.includes('/tools/da-media/')) {
-      return Utils.normalizeDocumentPath(currentPath);
-    }
-    
-    return null;
   }
 
   static detectDocumentType(path = null) {
-    const docPath = path || Utils.getCurrentDocumentPath() || '';
-    const pathLower = docPath.toLowerCase();
-    
-    if (pathLower.includes('demo')) return 'Demo Page';
-    if (pathLower.includes('blog')) return 'Blog Post';
-    if (pathLower.includes('product')) return 'Product Page';
-    if (pathLower.includes('about')) return 'About Page';
-    if (pathLower.includes('contact')) return 'Contact Page';
-    if (pathLower.includes('home') || pathLower === '/' || pathLower === '') return 'Home Page';
-    
-    return 'Content Page';
+    const currentPath = path || Utils.getCurrentDocumentPath();
+
+    if (currentPath.includes('/docs/')) return 'documentation';
+    if (currentPath.includes('/blog/')) return 'blog';
+    if (currentPath.includes('/news/')) return 'news';
+    if (currentPath.includes('/products/')) return 'product';
+    if (currentPath.includes('/about/')) return 'about';
+    if (currentPath === '' || currentPath === '/') return 'homepage';
+
+    return 'page';
   }
 
   static getFromCache(key, maxAge) {
     try {
-      const cached = localStorage.getItem(`da-media-cache-${key}`);
-      if (cached) {
-        const data = JSON.parse(cached);
-        if (Date.now() - data.timestamp < maxAge) {
-          return data.data;
-        }
+      const item = localStorage.getItem(`da_media_${key}`);
+      if (!item) return null;
+
+      const { data, timestamp } = JSON.parse(item);
+      if (Date.now() - timestamp > maxAge) {
+        localStorage.removeItem(`da_media_${key}`);
+        return null;
       }
-    } catch (error) {
-      // Silent fail
+
+      return data;
+    } catch {
+      return null;
     }
-    return null;
   }
 
   static setCache(key, data) {
     try {
-      const cacheData = { data, timestamp: Date.now() };
-      localStorage.setItem(`da-media-cache-${key}`, JSON.stringify(cacheData));
-    } catch (error) {
-      // Silent fail
+      const item = {
+        data,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(`da_media_${key}`, JSON.stringify(item));
+    } catch {
+      // Ignore cache errors
     }
   }
 
   static getImageDimensionsForDevice(asset, device) {
     if (asset.responsivePattern?.sources) {
-      for (const sourceData of asset.responsivePattern.sources) {
-        const isDesktopSource = sourceData.media && sourceData.media.includes('min-width: 600px');
+      const { sources } = asset.responsivePattern;
+      for (let i = 0; i < sources.length; i += 1) {
+        const sourceData = sources[i];
+        const isDesktopSource = sourceData.media
+          && sourceData.media.includes('min-width: 600px');
         const isMobileSource = !sourceData.media || sourceData.media === null;
-        
-        if ((device === 'desktop' && isDesktopSource) || 
-            ((device === 'tablet' || device === 'mobile') && isMobileSource)) {
-          
+
+        if ((device === 'desktop' && isDesktopSource)
+            || ((device === 'tablet' || device === 'mobile') && isMobileSource)) {
           if (sourceData.pattern?.width && asset.dimensions?.height && asset.dimensions?.width) {
             const ratio = asset.dimensions.height / asset.dimensions.width;
             const newHeight = Math.round(sourceData.pattern.width * ratio);
@@ -150,16 +155,16 @@ export class Utils {
         }
       }
     }
-    
+
     if (asset.originalPictureHTML) {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = asset.originalPictureHTML;
       const sources = Array.from(tempDiv.querySelectorAll('source'));
-      
-      for (const source of sources) {
+
+      sources.forEach((source) => {
         const srcset = source.getAttribute('srcset');
         const media = source.getAttribute('media');
-        
+
         if (Utils.sourceMatchesDevice(media, device, { desktop: 1200, tablet: 768, mobile: 480 })) {
           const extractedWidth = Utils.extractWidthFromSrcset(srcset);
           if (extractedWidth && asset.dimensions?.width && asset.dimensions?.height) {
@@ -168,9 +173,9 @@ export class Utils {
             return `${extractedWidth} × ${newHeight}px`;
           }
         }
-      }
+      });
     }
-    
+
     if (!asset.dimensions?.width || !asset.dimensions?.height) {
       return 'Unknown dimensions';
     }
@@ -178,25 +183,27 @@ export class Utils {
     const deviceScaleFactors = {
       desktop: 1.0,
       tablet: 0.64,
-      mobile: 0.4
+      mobile: 0.4,
     };
-    
+
     const scaleFactor = deviceScaleFactors[device] || 1.0;
     const scaledWidth = Math.round(asset.dimensions.width * scaleFactor);
     const scaledHeight = Math.round(asset.dimensions.height * scaleFactor);
-    
+
     return `${scaledWidth} × ${scaledHeight}px`;
   }
 
   static getFileSizeForDevice(asset, device) {
     if (asset.responsivePattern?.sources) {
-      for (const sourceData of asset.responsivePattern.sources) {
-        const isDesktopSource = sourceData.media && sourceData.media.includes('min-width: 600px');
+      const { sources } = asset.responsivePattern;
+      for (let i = 0; i < sources.length; i += 1) {
+        const sourceData = sources[i];
+        const isDesktopSource = sourceData.media
+          && sourceData.media.includes('min-width: 600px');
         const isMobileSource = !sourceData.media || sourceData.media === null;
-        
-        if ((device === 'desktop' && isDesktopSource) || 
-            ((device === 'tablet' || device === 'mobile') && isMobileSource)) {
-          
+
+        if ((device === 'desktop' && isDesktopSource)
+            || ((device === 'tablet' || device === 'mobile') && isMobileSource)) {
           if (sourceData.pattern?.fileSizeFormatted) {
             return sourceData.pattern.fileSizeFormatted;
           }
@@ -206,24 +213,24 @@ export class Utils {
         }
       }
     }
-    
+
     if (asset.originalPictureHTML) {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = asset.originalPictureHTML;
       const sources = Array.from(tempDiv.querySelectorAll('source'));
-      
-      for (const source of sources) {
+
+      sources.forEach((source) => {
         const media = source.getAttribute('media');
-        
+
         if (Utils.sourceMatchesDevice(media, device, { desktop: 1200, tablet: 768, mobile: 480 })) {
-          const fileSize = Utils.getFileSizeFromResponsivePattern(asset, media, device);
+          const fileSize = Utils.getFileSizeFromResponsivePattern(asset, media);
           if (fileSize) {
             return fileSize;
           }
         }
-      }
+      });
     }
-    
+
     return Utils.estimateFileSize(asset, device);
   }
 
@@ -231,57 +238,59 @@ export class Utils {
     if (!mediaQuery) {
       return device === 'desktop';
     }
-    
+
     const minWidthMatch = mediaQuery.match(/min-width:\s*(\d+)px/);
     const maxWidthMatch = mediaQuery.match(/max-width:\s*(\d+)px/);
-    
+
     const currentViewport = deviceViewports[device];
-    
+
     if (minWidthMatch) {
-      const minWidth = parseInt(minWidthMatch[1]);
+      const minWidth = parseInt(minWidthMatch[1], 10);
       if (device === 'desktop' && currentViewport >= minWidth) return true;
       if (device === 'tablet' && currentViewport >= minWidth && minWidth <= 600) return true;
       if (device === 'mobile' && minWidth <= 480) return true;
     }
-    
+
     if (maxWidthMatch) {
-      const maxWidth = parseInt(maxWidthMatch[1]);
+      const maxWidth = parseInt(maxWidthMatch[1], 10);
       if (device === 'mobile' && currentViewport <= maxWidth) return true;
       if (device === 'tablet' && currentViewport <= maxWidth && maxWidth >= 480) return true;
     }
-    
-    if (device === 'desktop' && (!minWidthMatch || parseInt(minWidthMatch[1]) <= 600)) return true;
-    if (device === 'mobile' && (maxWidthMatch && parseInt(maxWidthMatch[1]) < 600)) return true;
+
+    if (device === 'desktop' && (!minWidthMatch || parseInt(minWidthMatch[1], 10) <= 600)) return true;
+    if (device === 'mobile' && (maxWidthMatch && parseInt(maxWidthMatch[1], 10) < 600)) return true;
     if (device === 'tablet') return true;
-    
+
     return false;
   }
 
   static extractWidthFromSrcset(srcset) {
     if (!srcset) return null;
-    
+
     const urlMatch = srcset.match(/width=(\d+)/);
     if (urlMatch) {
-      return parseInt(urlMatch[1]);
+      return parseInt(urlMatch[1], 10);
     }
-    
+
     const widthMatch = srcset.match(/(\d+)w/);
     if (widthMatch) {
-      return parseInt(widthMatch[1]);
+      return parseInt(widthMatch[1], 10);
     }
-    
+
     return null;
   }
 
-  static getFileSizeFromResponsivePattern(asset, media, device) {
+  static getFileSizeFromResponsivePattern(asset, media) {
     if (!asset.responsivePattern?.sources) return null;
-    
-    for (const sourceData of asset.responsivePattern.sources) {
+
+    const { sources } = asset.responsivePattern;
+    for (let i = 0; i < sources.length; i += 1) {
+      const sourceData = sources[i];
       if (sourceData.media === media && sourceData.pattern?.fileSizeFormatted) {
         return sourceData.pattern.fileSizeFormatted;
       }
     }
-    
+
     return null;
   }
 
@@ -290,7 +299,7 @@ export class Utils {
       const fallbackSizes = {
         desktop: 250 * 1024,
         tablet: 120 * 1024,
-        mobile: 45 * 1024
+        mobile: 45 * 1024,
       };
       return Utils.formatFileSize(fallbackSizes[device] || fallbackSizes.desktop);
     }
@@ -298,30 +307,28 @@ export class Utils {
     const deviceScaleFactors = {
       desktop: 1.0,
       tablet: 0.64,
-      mobile: 0.4
+      mobile: 0.4,
     };
-    
+
     const scaleFactor = deviceScaleFactors[device] || 1.0;
-    
+
     const scaledWidth = Math.round(asset.dimensions.width * scaleFactor);
     const scaledHeight = Math.round(asset.dimensions.height * scaleFactor);
     const scaledPixels = scaledWidth * scaledHeight;
-    
+
     const bytesPerPixel = 0.4;
     const estimatedBytes = scaledPixels * bytesPerPixel;
-    
+
     return Utils.formatFileSize(estimatedBytes);
   }
 
   static extractOrgRepo() {
     if (window.daSDK?.context?.org && window.daSDK?.context?.repo) {
-      return {
-        org: window.daSDK.context.org,
-        repo: window.daSDK.context.repo
-      };
+      const { org, repo } = window.daSDK.context;
+      return { org, repo };
     }
-    
-    const hostname = window.location.hostname;
+
+    const { hostname } = window.location;
     if (hostname.includes('aem.page') || hostname.includes('aem.live')) {
       const parts = hostname.split('--');
       if (parts.length >= 3) {
@@ -332,9 +339,8 @@ export class Utils {
         }
       }
     }
-    
+
     const error = 'Unable to determine organization and repository. Please ensure you are running in a proper AEM environment.';
-    console.error(error);
     throw new Error(error);
   }
-} 
+}

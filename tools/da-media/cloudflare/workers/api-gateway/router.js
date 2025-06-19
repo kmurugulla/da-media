@@ -96,7 +96,7 @@ export class APIRouter {
       const basePath = routePath.slice(0, -2);
       if (pathname.startsWith(basePath)) {
         return {
-          wildcard: pathname.slice(basePath.length + 1)
+          wildcard: pathname.slice(basePath.length + 1),
         };
       }
     }
@@ -118,7 +118,7 @@ export class APIRouter {
 
     // Find matching route
     const match = this.matchRoute(method, pathname);
-    
+
     if (match) {
       // Add params to request context
       request.params = match.params;
@@ -134,13 +134,13 @@ export class APIRouter {
     return createSuccessResponse({
       error: 'Route not found',
       message: `No handler found for ${method} ${pathname}`,
-      availableRoutes: Array.from(this.routes.keys())
+      availableRoutes: Array.from(this.routes.keys()),
     }, { status: CONFIG.HTTP_STATUS.NOT_FOUND });
   }
 
   // Get API information
   getAPIInfo() {
-    const endpoints = Array.from(this.routes.keys()).map(key => {
+    const endpoints = Array.from(this.routes.keys()).map((key) => {
       const [method, path] = key.split(':');
       return { method, path };
     });
@@ -150,7 +150,7 @@ export class APIRouter {
       version: '2.0.0',
       status: 'healthy',
       endpoints,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 }
@@ -163,51 +163,49 @@ export function createRouter() {
   const handlers = {};
 
   // Health and basic endpoints
-  router.get('/health', async (request, env) => {
-    return createSuccessResponse({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      services: {
-        ai: env.AI ? 'available' : 'unavailable',
-        kv: env.DA_MEDIA_KV ? 'available' : 'unavailable',
-        worker: 'running'
-      }
-    });
-  });
+  router.get('/health', async (request, env) => createSuccessResponse({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    services: {
+      ai: env.AI ? 'available' : 'unavailable',
+      kv: env.DA_MEDIA_KV ? 'available' : 'unavailable',
+      worker: 'running',
+    },
+  }));
 
   // Asset management endpoints
   router.get('/api/assets', (request, env) => handlers.handleAssetsRequest(request, env));
   router.get('/api/search', (request, env) => handlers.handleSearchRequest(request, env));
   router.post('/api/analyze', (request, env) => handlers.handleAnalyzeRequest(request, env));
-  
+
   // Usage tracking
   router.post('/api/track-usage', (request, env) => handlers.handleUsageTracking(request, env));
   router.post('/api/analyze-context', (request, env) => handlers.handleContextAnalysis(request, env));
   router.get('/api/usage-analytics', (request, env) => handlers.handleUsageAnalytics(request, env));
-  
+
   // Webhook handling
   router.post('/api/da-webhook', (request, env) => handlers.handleDAWebhook(request, env));
-  
+
   // Image processing
   router.post('/api/analyze-image', (request, env) => handlers.handleImageAnalysis(request, env));
   router.post('/api/upload-image', (request, env) => handlers.handleImageUpload(request, env));
-  
+
   // Content scanning
   router.post('/api/scan-preview-content', (request, env) => handlers.handlePreviewContentScan(request, env));
   router.get('/api/test-responsive-extraction', (request, env) => handlers.handleTestResponsiveExtraction(request, env));
-  
+
   // Image management
   router.get('/api/analyzed-images', (request, env) => handlers.handleAnalyzedImagesRequest(request, env));
   router.get('/api/analyzed-images-fast', (request, env) => handlers.handleAnalyzedImagesFastRequest(request, env));
   router.delete('/api/analyzed-images/{id}', (request, env) => handlers.handleDeleteAnalyzedImages(request, env));
-  
+
   // Analysis retrieval
   router.get('/api/get-analysis/*', (request, env) => handlers.handleGetAnalysis(request, env));
-  
+
   // Migration endpoints
   router.post('/api/migrate-ids', (request, env) => handlers.handleIdMigration(request, env));
   router.post('/api/migrate-to-12char', (request, env) => handlers.handleBase62Migration(request, env));
-  
+
   // External assets
   router.get('/api/external-assets', (request, env) => handlers.handleExternalAssetsRequest(request, env));
   router.get('/api/migration-candidates', (request, env) => handlers.handleMigrationCandidatesRequest(request, env));
@@ -229,4 +227,4 @@ export function createRouter() {
 }
 
 // Export configured router instance
-export const router = createRouter(); 
+export const router = createRouter();

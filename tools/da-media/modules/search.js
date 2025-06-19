@@ -9,7 +9,7 @@ export class SearchManager {
     this.searchInput = document.getElementById('nlpSearch');
     this.quickSearchLabels = document.getElementById('quickSearchLabels');
     this.onSearchCallback = onSearchCallback;
-    
+
     if (this.searchInput) {
       this.searchInput.addEventListener('input', this.handleSearchInput.bind(this));
     }
@@ -27,26 +27,25 @@ export class SearchManager {
     const termCounts = new Map();
     const minCount = 3;
 
-    this.assets.forEach(asset => {
+    this.assets.forEach((asset) => {
       const allTerms = [
         ...asset.name.toLowerCase().split(/[\s\-_]+/),
-        ...(asset.tags || []).map(tag => tag.toLowerCase()),
+        ...(asset.tags || []).map((tag) => tag.toLowerCase()),
         asset.category.toLowerCase(),
-        asset.type.toLowerCase()
-        // Explicitly exclude scan metadata fields
+        asset.type.toLowerCase(),
       ];
 
-      allTerms.forEach(term => {
+      allTerms.forEach((term) => {
         const excludedTerms = [
-          'image', 'external', 'internal', 
+          'image', 'external', 'internal',
           'github-actions-publish', 'github', 'actions', 'publish',
           'scan', 'trigger', 'metadata', 'preview', 'manual',
-          'unknown', 'sourceType'
+          'unknown', 'sourceType', 'manual-demo-scan'
         ];
-        
-        if (term.length > 3 && 
-            !term.match(/^\d+$/) && 
-            !excludedTerms.includes(term.toLowerCase())) {
+
+        if (term.length > 3
+            && !term.match(/^\d+$/)
+            && !excludedTerms.includes(term.toLowerCase())) {
           termCounts.set(term, (termCounts.get(term) || 0) + 1);
         }
       });
@@ -54,7 +53,7 @@ export class SearchManager {
 
     const priorityTerms = ['poster', 'logo', 'carousel', 'hero', 'thumbnail', 'banner', 'sling'];
     const topTerms = Array.from(termCounts.entries())
-      .filter(([term, count]) => count >= minCount)
+      .filter(([, count]) => count >= minCount)
       .sort((a, b) => {
         const aPriority = priorityTerms.includes(a[0]) ? 1000 : 0;
         const bPriority = priorityTerms.includes(b[0]) ? 1000 : 0;
@@ -64,11 +63,11 @@ export class SearchManager {
       .map(([term, count]) => ({ term, count }));
 
     const essentialLabels = [
-      { term: 'external', count: this.assets.filter(a => a.isExternal).length }
+      { term: 'external', count: this.assets.filter((a) => a.isExternal).length },
     ];
 
     const allLabels = [...essentialLabels, ...topTerms]
-      .filter((label, index, arr) => arr.findIndex(l => l.term === label.term) === index)
+      .filter((label, index, arr) => arr.findIndex((l) => l.term === label.term) === index)
       .slice(0, 6);
 
     this.quickSearchLabels.innerHTML = allLabels
@@ -78,7 +77,7 @@ export class SearchManager {
         </span>
       `).join('');
 
-    this.quickSearchLabels.querySelectorAll('.quick-search-label').forEach(label => {
+    this.quickSearchLabels.querySelectorAll('.quick-search-label').forEach((label) => {
       label.addEventListener('click', (e) => {
         const searchTerm = e.target.dataset.search;
         if (this.searchInput) {
@@ -87,8 +86,6 @@ export class SearchManager {
         }
       });
     });
-
-    console.log('🏷️ Generated dynamic quick search labels:', allLabels.map(l => l.term));
   }
 
   handleSearchInput() {
@@ -99,53 +96,49 @@ export class SearchManager {
 
   performSearch(query) {
     const queryLower = query.toLowerCase().trim();
-    
+
     if (!queryLower) {
       return [...this.assets];
     }
 
-    console.log('🔍 Processing search query:', queryLower);
-
     const stopWords = ['show', 'me', 'get', 'find', 'search', 'for', 'some', 'a', 'an', 'the', 'of', 'with', 'that', 'can', 'use', 'in', 'i', 'need', 'want', 'give', 'looking'];
     const keywords = queryLower.split(' ')
-      .filter(word => word.length > 2 && !stopWords.includes(word));
-    
-    console.log('🎯 Extracted keywords:', keywords);
+      .filter((word) => word.length > 2 && !stopWords.includes(word));
 
     if (keywords.length === 0) {
-      return this.assets.filter(asset => 
-        asset.name.toLowerCase().includes(queryLower) ||
-        (asset.description && asset.description.toLowerCase().includes(queryLower)) ||
-        (asset.tags && asset.tags.some(tag => tag.toLowerCase().includes(queryLower))) ||
-        asset.category.toLowerCase().includes(queryLower)
-      );
+      return this.assets.filter((asset) => asset.name.toLowerCase().includes(queryLower)
+        || (asset.description && asset.description.toLowerCase().includes(queryLower))
+        || (asset.tags && asset.tags.some((tag) => tag.toLowerCase().includes(queryLower)))
+        || asset.category.toLowerCase().includes(queryLower));
     }
 
-    const filteredAssets = this.assets.filter(asset => {
+    const filteredAssets = this.assets.filter((asset) => {
       const searchText = `${asset.name} ${asset.category} ${(asset.tags || []).join(' ')} ${asset.description || ''}`.toLowerCase();
-      
-      const hasMatch = keywords.some(keyword => {
+
+      const hasMatch = keywords.some((keyword) => {
         const categoryMatch = asset.category.toLowerCase().includes(keyword);
         const nameMatch = asset.name.toLowerCase().includes(keyword);
         const textMatch = searchText.includes(keyword);
         const isExternalMatch = keyword === 'external' && asset.isExternal;
         const isInternalMatch = keyword === 'internal' && !asset.isExternal;
         const typeMatch = asset.type.toLowerCase().includes(keyword);
-        
-        return categoryMatch || nameMatch || textMatch || isExternalMatch || isInternalMatch || typeMatch;
+
+        return categoryMatch
+          || nameMatch
+          || textMatch
+          || isExternalMatch
+          || isInternalMatch
+          || typeMatch;
       });
-      
+
       return hasMatch;
     });
 
-    console.log(`🎯 Search results: ${filteredAssets.length} assets found`);
     return filteredAssets;
   }
 
   getTagCount(tag) {
-    return this.assets.filter(asset => 
-      asset.name.toLowerCase().includes(tag) || 
-      (asset.tags && asset.tags.some(t => t.toLowerCase().includes(tag)))
-    ).length;
+    return this.assets.filter((asset) => asset.name.toLowerCase().includes(tag)
+      || (asset.tags && asset.tags.some((t) => t.toLowerCase().includes(tag)))).length;
   }
-} 
+}

@@ -2,7 +2,7 @@
 
 /**
  * DA Media Library Infrastructure Setup Script
- * 
+ *
  * This script automates the setup of Cloudflare infrastructure:
  * - KV namespaces for metadata and caching
  * - D1 database for analytics
@@ -30,31 +30,30 @@ class CloudflareSetup {
   async run() {
     try {
       this.log('Starting DA Media Library infrastructure setup...');
-      
+
       // Check if wrangler is authenticated
       await this.checkAuth();
-      
+
       // Create KV namespaces
       await this.createKVNamespaces();
-      
+
       // Create D1 database
       await this.createD1Database();
-      
+
       // Create R2 buckets
       await this.createR2Buckets();
-      
+
       // Update wrangler.toml
       await this.updateWranglerConfig();
-      
+
       // Create database schema
       await this.createDatabaseSchema();
-      
+
       this.success('Infrastructure setup completed successfully!');
       this.log('Next steps:');
       this.log('1. Review the updated wrangler.toml file');
       this.log('2. Run "npm run deploy" to deploy the workers');
       this.log('3. Test the API endpoints');
-      
     } catch (error) {
       this.error(`Setup failed: ${error.message}`);
       process.exit(1);
@@ -74,7 +73,7 @@ class CloudflareSetup {
 
   async createKVNamespaces() {
     this.log('Creating KV namespaces...');
-    
+
     // Create main metadata namespace
     const kvResult = this.runWrangler('kv:namespace create "DA_MEDIA_KV"');
     const kvMatch = kvResult.match(/id = "([^"]+)"/);
@@ -108,7 +107,7 @@ class CloudflareSetup {
 
   async createD1Database() {
     this.log('Creating D1 database...');
-    
+
     const d1Result = this.runWrangler('d1 create da-media-library');
     const d1Match = d1Result.match(/database_id = "([^"]+)"/);
     if (d1Match) {
@@ -119,7 +118,7 @@ class CloudflareSetup {
 
   async createR2Buckets() {
     this.log('Creating R2 buckets...');
-    
+
     try {
       this.runWrangler('r2 bucket create da-media-models');
       this.success('Created R2 bucket: da-media-models');
@@ -143,47 +142,47 @@ class CloudflareSetup {
 
   async updateWranglerConfig() {
     this.log('Updating wrangler.toml configuration...');
-    
+
     let config = readFileSync(WRANGLER_CONFIG, 'utf8');
-    
+
     // Update KV namespace IDs
     if (this.config.DA_MEDIA_KV_ID) {
       config = config.replace(
         /(\[\[kv_namespaces\]\]\nbinding = "DA_MEDIA_KV"\nid = "")[^"]*(")/,
-        `$1${this.config.DA_MEDIA_KV_ID}$2`
+        `$1${this.config.DA_MEDIA_KV_ID}$2`,
       );
       config = config.replace(
         /(binding = "DA_MEDIA_KV"[\s\S]*?preview_id = "")[^"]*(")/,
-        `$1${this.config.DA_MEDIA_KV_PREVIEW_ID}$2`
+        `$1${this.config.DA_MEDIA_KV_PREVIEW_ID}$2`,
       );
     }
-    
+
     if (this.config.DA_MEDIA_CACHE_ID) {
       config = config.replace(
         /(\[\[kv_namespaces\]\]\nbinding = "DA_MEDIA_CACHE"\nid = "")[^"]*(")/,
-        `$1${this.config.DA_MEDIA_CACHE_ID}$2`
+        `$1${this.config.DA_MEDIA_CACHE_ID}$2`,
       );
       config = config.replace(
         /(binding = "DA_MEDIA_CACHE"[\s\S]*?preview_id = "")[^"]*(")/,
-        `$1${this.config.DA_MEDIA_CACHE_PREVIEW_ID}$2`
+        `$1${this.config.DA_MEDIA_CACHE_PREVIEW_ID}$2`,
       );
     }
-    
+
     // Update D1 database ID
     if (this.config.DA_MEDIA_DB_ID) {
       config = config.replace(
         /(database_id = "")[^"]*(")/,
-        `$1${this.config.DA_MEDIA_DB_ID}$2`
+        `$1${this.config.DA_MEDIA_DB_ID}$2`,
       );
     }
-    
+
     writeFileSync(WRANGLER_CONFIG, config);
     this.success('Updated wrangler.toml with generated IDs');
   }
 
   async createDatabaseSchema() {
     this.log('Creating database schema...');
-    
+
     try {
       this.runWrangler('d1 migrations apply da-media-library --local');
       this.success('Applied database schema locally');
@@ -197,7 +196,7 @@ class CloudflareSetup {
       const result = execSync(`wrangler ${command}`, {
         encoding: 'utf8',
         cwd: PROJECT_ROOT,
-        stdio: 'pipe'
+        stdio: 'pipe',
       });
       return result;
     } catch (error) {
@@ -210,4 +209,4 @@ class CloudflareSetup {
 
 // Run the setup
 const setup = new CloudflareSetup();
-setup.run(); 
+setup.run();

@@ -3,40 +3,34 @@
  * Handles loading assets from various sources with caching and error handling
  */
 import { Utils } from './utils.js';
+import { getApiEndpoint } from './config.js';
 
+/**
+ * AssetLoader handles loading and transforming assets from various sources
+ */
 export class AssetLoader {
-  constructor(apiEndpoint = 'http://localhost:8787') {
-    this.apiEndpoint = apiEndpoint;
+  constructor(apiEndpoint = null) {
+    this.apiEndpoint = apiEndpoint || getApiEndpoint();
     this.cache = new Map();
   }
 
   /**
-   * Load all assets using the working da-media.js approach
+   * Load all assets from available sources
    */
   async loadAllAssets() {
     try {
-      // Load analyzed images (which contains both internal and external)
-      const allAnalyzedImages = await this.loadAnalyzedImages();
-      
-      // Also load DA source assets to get complete internal asset library
-      const daSourceAssets = await this.loadDASourceAssets();
-      
-      // Separate internal and external images from analyzed data
-      const analyzedInternalImages = allAnalyzedImages.filter(img => !img.isExternal);
-      const externalImages = allAnalyzedImages.filter(img => img.isExternal);
-      
-      // Merge analyzed internal images with DA source assets (avoid duplicates)
-      const mergedInternalImages = this.mergeAnalyzedWithSource(analyzedInternalImages, daSourceAssets);
-      
-      // Remove duplicates from external images (same image from different domains)
+      const analyzedImages = await this.loadAnalyzedImages();
+
+      const mergedInternalImages = this.mergeAnalyzedWithSource(
+        analyzedImages.filter((img) => !img.isExternal),
+      );
+
+      const externalImages = analyzedImages.filter((img) => img.isExternal);
       const uniqueExternalImages = this.removeDuplicateExternalImages(externalImages);
-      
-      // Combine all internal and unique external assets
       const allAssets = [...mergedInternalImages, ...uniqueExternalImages];
-      
+
       return allAssets;
     } catch (error) {
-      console.warn('Failed to load assets, using fallback:', error);
       return this.generateMockAssets();
     }
   }
@@ -46,44 +40,40 @@ export class AssetLoader {
    */
   async loadAnalyzedImages() {
     const cacheKey = 'da-media-analyzed-images';
-    const cacheExpiry = 5 * 60 * 1000; // 5 minutes
-    
-    // Check cache first
+    const cacheExpiry = 5 * 60 * 1000;
+
     const cached = this.getFromCache(cacheKey, cacheExpiry);
     if (cached) {
       return this.transformAnalyzedImages(cached.images || []);
     }
-    
+
     try {
-      // Try new org-aware endpoint first
-      let response = await fetch(`${this.apiEndpoint}/api/images?includeExternal=true&limit=100`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
+
+      let response = await fetch(
+        `${this.apiEndpoint}/api/images?includeExternal=true&limit=100`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
       if (!response.ok) {
-        // Fallback to legacy endpoint
         response = await fetch(`${this.apiEndpoint}/api/analyzed-images-fast`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
         });
       }
-      
+
       if (!response.ok) {
-        throw new Error(`Failed to load analyzed images: ${response.status}`);
+        throw new Error(`Failed to load analyzed images: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
-      // Cache the response
       this.setCache(cacheKey, data);
-      
-      // Handle both new and legacy response formats
       const images = data.images || data.data?.images || [];
-      
+
       return this.transformAnalyzedImages(images);
     } catch (error) {
-      console.warn('Failed to load analyzed images:', error);
       return [];
     }
   }
@@ -92,116 +82,100 @@ export class AssetLoader {
    * Load DA source assets (placeholder for now)
    */
   async loadDASourceAssets() {
-    // Mock implementation - in full version this would load from DA
     return [];
   }
 
   /**
-   * Transform analyzed images to standardized asset format (exact copy from working version)
+   * Transform analyzed images to standardized asset format
    */
   transformAnalyzedImages(analyzedImages) {
-    const currentDocPath = this.getCurrentDocumentPath();
-    
-    return analyzedImages.map(img => {
-      // Check if used in current document
-      const usedInCurrentDocument = currentDocPath && this.isUsedInCurrentDocument(img, currentDocPath);
-      
-      // Determine if this is an external or internal image
+    return analyzedImages.map((img) => {
       const isExternal = img.isExternal || false;
-      
-      // Calculate AI score based on analysis quality and usage
-      const aiScore = isExternal ? this.calculateExternalAssetScore(img) : this.calculateAnalyzedImageScore(img);
-      
-      // Extract file extension from src
-      const extension = Utils.extractExtensionFromSrc(img.src);
-      const assetType = Utils.detectTypeFromExtension(extension);
-      
-      // Determine category based on internal vs external
-      const category = isExternal ? 'external' : this.mapContextToCategory(img.usedInPages?.[0]?.context || 'content');
-      
-      // Fix URL handling for external vs internal assets
+
+      const aiScore = isExternal
+        ? this.calculateExternalAssetScore(img)
+        : this.calculateAnalyzedImageScore(img);
+
+      // For external assets, try multiple ways to detect type
+      let extension = Utils.extractExtensionFromSrc(img.src);
+
+      // If no extension found in URL, try the displayName
+      if (!extension && img.displayName) {
+        extension = Utils.extractExtensionFromSrc(img.displayName);
+      }
+
+      let assetType = Utils.detectTypeFromExtension(extension);
+
+      // For external assets from known image CDNs, assume image type if detection failed
+      if (isExternal && assetType === 'unknown') {
+        if (img.src && (img.src.includes('scene7.com') || img.src.includes('cloudfront.net') || img.src.includes('akamai') || img.src.includes('/image/'))) {
+          assetType = 'image';
+        }
+      }
+
+      const category = isExternal
+        ? 'external'
+        : this.mapContextToCategory(img.usedInPages?.[0]?.context || 'content');
+
       let assetUrl;
+      let originalUrl;
       if (isExternal) {
-        // For external assets, the backend stores the Scene7 URL in the src field
-        assetUrl = img.src;
-        
-        // Only warn if we have a placeholder that wasn't resolved
+        // For external assets, prefer originalSrc over src
+        assetUrl = img.originalSrc || img.src;
+        originalUrl = img.originalSrc || img.src;
+
         if (!assetUrl || assetUrl.startsWith('[EXTERNAL]')) {
-          console.warn(`❌ Backend did not provide Scene7 URL for external asset: ${img.displayName}`);
-          assetUrl = null; // Let the UI show an icon instead
+          assetUrl = null;
+          originalUrl = null;
         }
-        
-        console.log(`🔍 External asset "${img.displayName}":`, {
-          src: img.src,
-          originalUrl: img.originalUrl,
-          actualUrl: img.actualUrl,
-          externalUrl: img.externalUrl,
-          url: img.url,
-          finalUrl: assetUrl,
-          fullImageData: img
-        });
-              } else {
-          // For internal assets, use the standard URL resolution
-          assetUrl = Utils.resolveAssetUrl(img.src);
-        }
-      
+      } else {
+        assetUrl = Utils.resolveAssetUrl(img.src);
+        originalUrl = assetUrl;
+      }
+
       const transformedAsset = {
         id: img.id,
         name: img.displayName,
         type: assetType,
-        category: category,
+        category,
         path: img.src,
         url: assetUrl,
-        originalUrl: assetUrl, // Store the same URL for consistency
+        originalUrl: originalUrl,
         aiScore,
-        isAIEnhanced: !isExternal, // Internal images are AI enhanced, external are not
-        isExternal: isExternal,
-        tags: isExternal ? this.generateExternalAssetTags(img) : this.generateTagsFromAnalysis(img),
-        size: img.dimensions?.width * img.dimensions?.height || 0,
+        isAIEnhanced: !isExternal,
+        isExternal,
+        tags: isExternal
+          ? this.generateExternalAssetTags(img)
+          : this.generateTagsFromAnalysis(img),
+        size: (img.dimensions?.width || 0) * (img.dimensions?.height || 0),
         created: img.firstSeen,
         lastUsed: img.lastSeen,
         source: isExternal ? 'external-scan' : 'preview-analysis',
         usageCount: img.usageCount || 0,
-        
-        // Rich metadata from our analysis
+
         displayName: img.displayName,
         originalAltText: img.originalAltText,
         aiGeneratedAltText: img.aiGeneratedAltText,
         dimensions: img.dimensions,
         usedInPages: img.usedInPages || [],
         aiAnalysis: img.aiAnalysis,
-        
-        // External asset specific properties
+
         sourceDomain: img.sourceDomain || null,
         migrationPriority: img.migrationPriority || (isExternal ? 'medium' : 'low'),
         needsMigration: isExternal,
         assetCategory: img.assetCategory || 'unknown',
-        
-        // Current document context
-        usedInCurrentDocument,
-        
-        // UI enhancements
+
         description: img.aiAnalysis?.description || img.originalAltText || img.displayName,
         confidence: img.aiAnalysis?.confidence || 0.5,
-        
-        // Usage analytics for sorting
-        lastUsedFormatted: img.lastSeen ? new Date(img.lastSeen).toLocaleDateString() : 'Never',
-        
-        // Responsive data
-        responsivePattern: img.responsivePattern || null,
-        originalPictureHTML: null, // Will be found lazily when needed
-        hasResponsive: !!(img.responsivePattern?.hasResponsive)
-      };
 
-      // Debug logging for external assets
-      if (isExternal) {
-        console.log(`🔧 Transformed external asset "${img.displayName}":`, {
-          originalSrc: img.src,
-          calculatedAssetUrl: assetUrl,
-          finalAssetUrl: transformedAsset.url,
-          fullTransformedAsset: transformedAsset
-        });
-      }
+        lastUsedFormatted: img.lastSeen
+          ? new Date(img.lastSeen).toLocaleDateString()
+          : 'Never',
+
+        responsivePattern: img.responsivePattern || null,
+        originalPictureHTML: null,
+        hasResponsive: !!(img.responsivePattern?.hasResponsive),
+      };
 
       return transformedAsset;
     });
@@ -210,8 +184,7 @@ export class AssetLoader {
   /**
    * Merge analyzed images with DA source assets
    */
-  mergeAnalyzedWithSource(analyzedImages, sourceAssets) {
-    // For now, just return analyzed images
+  mergeAnalyzedWithSource(analyzedImages) {
     return analyzedImages;
   }
 
@@ -221,26 +194,26 @@ export class AssetLoader {
   removeDuplicateExternalImages(externalImages) {
     const seen = new Map();
     const unique = [];
-    
-    for (const img of externalImages) {
+
+    externalImages.forEach((img) => {
       const cleanName = this.extractCleanAssetName(img.displayName || img.name || '');
       const key = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      
+
       if (!seen.has(key)) {
         seen.set(key, img);
         unique.push(img);
       } else {
         const existing = seen.get(key);
         if (this.shouldReplaceExternalImage(existing, img)) {
-          const index = unique.findIndex(u => u === existing);
+          const index = unique.findIndex((u) => u === existing);
           if (index !== -1) {
             unique[index] = img;
             seen.set(key, img);
           }
         }
       }
-    }
-    
+    });
+
     return unique;
   }
 
@@ -259,8 +232,8 @@ export class AssetLoader {
 
   isUsedInCurrentDocument(img, currentDocPath) {
     if (!img.usedInPages || !currentDocPath) return false;
-    
-    return img.usedInPages.some(page => {
+
+    return img.usedInPages.some((page) => {
       const normalizedPagePath = Utils.normalizeDocumentPath(page.path);
       const normalizedCurrentPath = Utils.normalizeDocumentPath(currentDocPath);
       return normalizedPagePath === normalizedCurrentPath;
@@ -268,27 +241,25 @@ export class AssetLoader {
   }
 
   calculateAnalyzedImageScore(img) {
-    let score = 15; // Base score
-    
+    let score = 15;
+
     if (img.aiAnalysis?.confidence) {
       score += Math.round(img.aiAnalysis.confidence * 30);
     }
-    
-    if (img.usedInCurrentDocument) {
-      score += 40;
-    }
-    
+
+    // Note: Document-specific scoring now handled in main application
+
     const usageCount = img.usageCount || 0;
     if (usageCount > 0) {
       score += Math.min(15, usageCount * 3);
     }
-    
+
     return Math.max(0, Math.min(100, score));
   }
 
   calculateExternalAssetScore(asset) {
     let score = 30;
-    
+
     if (asset.migrationPriority === 'high') {
       score += 25;
     } else if (asset.migrationPriority === 'medium') {
@@ -296,140 +267,127 @@ export class AssetLoader {
     } else {
       score += 5;
     }
-    
+
     const usageCount = asset.usageCount || 0;
     score += Math.min(20, usageCount * 2);
-    
+
     return Math.max(0, Math.min(100, score));
   }
 
   extractCleanAssetName(rawName) {
     if (!rawName) return 'Unnamed Asset';
-    
+
     let cleanName = rawName
       .replace(/^(SLING|Sling)[-_\s]*/i, '')
       .replace(/[-_]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    
-    cleanName = cleanName.replace(/\b\w/g, l => l.toUpperCase());
+
+    cleanName = cleanName.replace(/\b\w/g, (l) => l.toUpperCase());
     return cleanName || 'Unnamed Asset';
   }
 
   shouldReplaceExternalImage(existing, candidate) {
-    const priorityMap = { 'high': 3, 'medium': 2, 'low': 1 };
-    
-    const existingPriority = priorityMap[existing.migrationPriority] || 0;
-    const candidatePriority = priorityMap[candidate.migrationPriority] || 0;
-    
-    if (existingPriority === candidatePriority) {
-      return (candidate.usageCount || 0) > (existing.usageCount || 0);
-    }
-    
-    return candidatePriority > existingPriority;
+    const priorityMap = { high: 3, medium: 2, low: 1 };
+
+    const existingPriority = priorityMap[existing.migrationPriority] || 1;
+    const candidatePriority = priorityMap[candidate.migrationPriority] || 1;
+
+    if (candidatePriority > existingPriority) return true;
+    if (candidatePriority < existingPriority) return false;
+
+    return (candidate.usageCount || 0) > (existing.usageCount || 0);
   }
-
-
 
   generateMockAssets() {
     return [
       {
         id: 'mock-1',
-        name: 'Sample Hero Image',
+        name: 'Sample Image',
         type: 'image',
-        category: 'hero',
-        url: 'https://via.placeholder.com/1200x600/1473e6/ffffff?text=Hero+Image',
-        isExternal: false,
+        category: 'internal',
+        path: '/mock/sample.jpg',
+        url: 'https://via.placeholder.com/300x200',
         aiScore: 85,
-        usageCount: 3,
-        altText: 'Sample hero image',
-        dimensions: '1200 × 600px',
-        fileSize: '245 KB'
-      }
+        isAIEnhanced: true,
+        isExternal: false,
+        tags: ['sample', 'placeholder'],
+        size: 60000,
+        created: new Date().toISOString(),
+        lastUsed: new Date().toISOString(),
+        description: 'Sample placeholder image',
+      },
     ];
   }
 
-  /**
-   * Map context to category (from working version)
-   */
   mapContextToCategory(context) {
     const contextMap = {
-      'hero': 'hero',
-      'feature': 'feature', 
-      'gallery': 'gallery',
-      'content': 'image',
-      'team': 'team',
-      'product': 'product'
+      header: 'navigation',
+      footer: 'navigation',
+      hero: 'hero',
+      banner: 'hero',
+      content: 'internal',
+      sidebar: 'internal',
+      article: 'internal',
+      gallery: 'gallery',
+      carousel: 'gallery',
+      thumbnail: 'thumbnail',
     };
-    
-    return contextMap[context] || 'image';
+
+    return contextMap[context?.toLowerCase()] || 'internal';
   }
 
-  /**
-   * Generate tags from analysis (from working version)
-   */
   generateTagsFromAnalysis(img) {
     const tags = [];
-    
-    // Add tags from AI analysis
-    if (img.aiAnalysis?.tags) {
-      tags.push(...img.aiAnalysis.tags);
+
+    if (img.aiAnalysis?.keywords) {
+      tags.push(...img.aiAnalysis.keywords.slice(0, 5));
     }
-    
-    // Add tags from display name
-    const name = img.displayName?.toLowerCase() || '';
-    if (name.includes('hero')) tags.push('hero');
-    if (name.includes('team')) tags.push('team', 'people');
-    if (name.includes('product')) tags.push('product', 'feature');
-    if (name.includes('logo')) tags.push('logo', 'brand');
-    if (name.includes('background')) tags.push('background', 'texture');
-    
-    // Add tags from usage context
+
+    if (img.aiAnalysis?.categories) {
+      tags.push(...img.aiAnalysis.categories.slice(0, 3));
+    }
+
+    if (img.dimensions?.width && img.dimensions?.height) {
+      const aspectRatio = img.dimensions.width / img.dimensions.height;
+      if (aspectRatio > 1.5) tags.push('landscape');
+      else if (aspectRatio < 0.75) tags.push('portrait');
+      else tags.push('square');
+
+      if (img.dimensions.width >= 1920) tags.push('high-resolution');
+      if (img.dimensions.width <= 300) tags.push('thumbnail');
+    }
+
     if (img.usedInPages) {
-      img.usedInPages.forEach(page => {
-        if (page.context) tags.push(page.context);
-      });
+      const contexts = img.usedInPages.map((page) => page.context).filter(Boolean);
+      tags.push(...new Set(contexts));
     }
-    
-    // Add quality indicators
-    if (img.aiAnalysis?.confidence > 0.8) tags.push('high-quality');
-    if (img.usageCount > 2) tags.push('popular');
-    if (img.originalAltText) tags.push('accessible');
-    
-    return [...new Set(tags)]; // Remove duplicates
+
+    const fileExtension = Utils.extractExtensionFromSrc(img.src);
+    if (fileExtension) tags.push(fileExtension);
+
+    return [...new Set(tags.filter(Boolean))].slice(0, 8);
   }
 
-  /**
-   * Generate external asset tags (from working version)
-   */
   generateExternalAssetTags(asset) {
-    const tags = [];
-    
-    // Add source domain tag
+    const tags = ['external'];
+
     if (asset.sourceDomain) {
-      tags.push(asset.sourceDomain);
+      tags.push(asset.sourceDomain.replace(/^www\./, ''));
     }
-    
-    // Add migration priority tag
+
     if (asset.migrationPriority) {
-      tags.push(`${asset.migrationPriority}-priority`);
+      tags.push(`priority-${asset.migrationPriority}`);
     }
-    
-    // Add performance tag
-    if (asset.performanceImpact >= 80) {
-      tags.push('performance-critical');
-    } else if (asset.performanceImpact >= 60) {
-      tags.push('performance-impact');
+
+    if (asset.assetCategory && asset.assetCategory !== 'unknown') {
+      tags.push(asset.assetCategory);
     }
-    
-    // Add type-based tags
-    if (asset.type === 'image') {
-      tags.push('external-image');
-    }
-    
-    // Add generic external tag
-    tags.push('external', 'migration-candidate');
-    
-    return tags;
+
+    const cleanName = this.extractCleanAssetName(asset.displayName || asset.name || '');
+    const nameWords = cleanName.toLowerCase().split(/[\s\-_]+/).filter((word) => word.length > 2);
+    tags.push(...nameWords.slice(0, 3));
+
+    return [...new Set(tags)].slice(0, 6);
   }
-} 
+}

@@ -3,11 +3,11 @@
  * Handles external asset analysis with improved data quality and junk filtering
  */
 
-import { 
-  validateMethod, 
-  createSuccessResponse, 
-  createErrorResponse, 
-  CONFIG 
+import {
+  validateMethod,
+  createSuccessResponse,
+  createErrorResponse,
+  CONFIG,
 } from '../utils.js';
 
 /**
@@ -15,7 +15,7 @@ import {
  */
 export async function handleGetExternalAssets(request, env) {
   validateMethod(request, ['GET']);
-  
+
   const url = new URL(request.url);
   const site = url.searchParams.get('site');
   const org = url.searchParams.get('org');
@@ -25,14 +25,14 @@ export async function handleGetExternalAssets(request, env) {
 
   if (!site || !org) {
     return createErrorResponse('Missing required parameters: site and org', {
-      status: CONFIG.HTTP_STATUS.BAD_REQUEST
+      status: CONFIG.HTTP_STATUS.BAD_REQUEST,
     });
   }
 
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
@@ -43,20 +43,20 @@ export async function handleGetExternalAssets(request, env) {
       externalFound: 0,
       junkFiltered: 0,
       qualityFiltered: 0,
-      finalCount: 0
+      finalCount: 0,
     };
 
-    const imagePromises = keys.map(key => env.DA_MEDIA_KV.get(key.name, 'json'));
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
     const images = await Promise.all(imagePromises);
 
     for (const image of images) {
       if (!image || !image.src) continue;
-      
+
       qualityStats.totalScanned++;
 
       const isExternal = isExternalAsset(image.src, { site, org });
       if (!isExternal) continue;
-      
+
       qualityStats.externalFound++;
 
       if (cleanJunk && isJunkAsset(image)) {
@@ -72,7 +72,7 @@ export async function handleGetExternalAssets(request, env) {
 
       const domain = extractDomain(image.src);
       const category = categorizeAssetDomain(domain);
-      
+
       const assetInfo = {
         ...image,
         domain,
@@ -80,9 +80,9 @@ export async function handleGetExternalAssets(request, env) {
         qualityScore,
         migrationPriority: calculateMigrationPriority(domain, category, qualityScore),
         estimatedSavings: calculateEstimatedSavings(image),
-        qualityIssues: identifyQualityIssues(image)
+        qualityIssues: identifyQualityIssues(image),
       };
-      
+
       externalAssets.push(assetInfo);
     }
 
@@ -95,10 +95,10 @@ export async function handleGetExternalAssets(request, env) {
       success: true,
       summary: {
         totalExternal: externalAssets.length,
-        domains: new Set(externalAssets.map(a => a.domain)).size,
-        highPriority: externalAssets.filter(a => a.migrationPriority === 'high').length,
+        domains: new Set(externalAssets.map((a) => a.domain)).size,
+        highPriority: externalAssets.filter((a) => a.migrationPriority === 'high').length,
         estimatedTotalSavings: externalAssets.reduce((sum, asset) => sum + (asset.estimatedSavings || 0), 0),
-        averageQualityScore: Math.round(externalAssets.reduce((sum, a) => sum + a.qualityScore, 0) / externalAssets.length)
+        averageQualityScore: Math.round(externalAssets.reduce((sum, a) => sum + a.qualityScore, 0) / externalAssets.length),
       },
       qualityStats,
       insights,
@@ -107,15 +107,14 @@ export async function handleGetExternalAssets(request, env) {
       filters: {
         cleanJunk,
         minQuality,
-        groupBy
+        groupBy,
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to fetch external assets'
+      message: 'Failed to fetch external assets',
     });
   }
 }
@@ -125,11 +124,11 @@ export async function handleGetExternalAssets(request, env) {
  */
 export async function handleCleanJunkAssets(request, env) {
   validateMethod(request, ['POST']);
-  
+
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
@@ -139,13 +138,13 @@ export async function handleCleanJunkAssets(request, env) {
       scanned: 0,
       junkFound: 0,
       deleted: 0,
-      errors: []
+      errors: [],
     };
 
     for (const key of keys) {
       const image = await env.DA_MEDIA_KV.get(key.name, 'json');
       if (!image) continue;
-      
+
       cleanupResults.scanned++;
 
       if (isJunkAsset(image)) {
@@ -154,7 +153,7 @@ export async function handleCleanJunkAssets(request, env) {
           id: image.id,
           displayName: image.displayName,
           src: image.src,
-          reason: getJunkReason(image)
+          reason: getJunkReason(image),
         });
 
         try {
@@ -163,7 +162,7 @@ export async function handleCleanJunkAssets(request, env) {
         } catch (error) {
           cleanupResults.errors.push({
             id: image.id,
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -173,13 +172,12 @@ export async function handleCleanJunkAssets(request, env) {
       message: `Cleaned up ${cleanupResults.deleted} junk assets`,
       cleanupResults,
       junkAssets: junkAssets.slice(0, 10), // Show first 10 for reference
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to clean junk assets'
+      message: 'Failed to clean junk assets',
     });
   }
 }
@@ -189,10 +187,10 @@ export async function handleCleanJunkAssets(request, env) {
  */
 function isExternalAsset(src, pageContext) {
   if (!src) return false;
-  
+
   const domain = extractDomain(src);
   const siteDomain = pageContext.site ? `${pageContext.site}--${pageContext.org}` : null;
-  
+
   return domain && !domain.includes(siteDomain);
 }
 
@@ -212,10 +210,10 @@ function extractDomain(url) {
  */
 function isJunkAsset(image) {
   if (!image || !image.src || !image.displayName) return true;
-  
+
   const src = image.src.toLowerCase();
   const name = image.displayName.toLowerCase();
-  
+
   const junkIndicators = [
     'placeholder',
     'example.com',
@@ -231,12 +229,10 @@ function isJunkAsset(image) {
     'tmp',
     'default',
     'no-image',
-    'blank'
+    'blank',
   ];
-  
-  return junkIndicators.some(indicator => 
-    src.includes(indicator) || name.includes(indicator)
-  );
+
+  return junkIndicators.some((indicator) => src.includes(indicator) || name.includes(indicator));
 }
 
 /**
@@ -245,10 +241,10 @@ function isJunkAsset(image) {
 function getJunkReason(image) {
   if (!image.src) return 'Missing source URL';
   if (!image.displayName) return 'Missing display name';
-  
+
   const src = image.src.toLowerCase();
   const name = image.displayName.toLowerCase();
-  
+
   const reasons = [
     { indicator: 'placeholder', reason: 'Placeholder image' },
     { indicator: 'example.com', reason: 'Example domain' },
@@ -256,15 +252,15 @@ function getJunkReason(image) {
     { indicator: 'sample', reason: 'Sample image' },
     { indicator: 'dummy', reason: 'Dummy content' },
     { indicator: 'fake', reason: 'Fake/mock data' },
-    { indicator: 'internal image', reason: 'Invalid internal reference' }
+    { indicator: 'internal image', reason: 'Invalid internal reference' },
   ];
-  
+
   for (const { indicator, reason } of reasons) {
     if (src.includes(indicator) || name.includes(indicator)) {
       return reason;
     }
   }
-  
+
   return 'Low quality asset';
 }
 
@@ -273,9 +269,9 @@ function getJunkReason(image) {
  */
 function calculateQualityScore(src) {
   if (!src) return 0;
-  
+
   let score = 0;
-  
+
   if (src.includes('dish.scene7.com/is/image/dishenterprise/')) {
     score += 100;
   } else if (src.includes('dish.scene7.com/is/image/sling/')) {
@@ -291,7 +287,7 @@ function calculateQualityScore(src) {
   } else {
     score += 10;
   }
-  
+
   if (src.includes('$transparent-png-desktop$')) {
     score += 20;
   } else if (src.includes('format=webp')) {
@@ -299,11 +295,11 @@ function calculateQualityScore(src) {
   } else if (src.includes('optimize=medium')) {
     score += 10;
   }
-  
+
   if (src.includes('example.com') || src.includes('placeholder')) {
     score -= 50;
   }
-  
+
   return Math.max(0, score);
 }
 
@@ -312,12 +308,12 @@ function calculateQualityScore(src) {
  */
 function categorizeAssetDomain(domain) {
   if (!domain) return 'unknown';
-  
+
   if (domain.includes('scene7.com')) return 'scene7';
   if (domain.includes('sling.com') || domain.includes('sling.tv')) return 'sling';
   if (domain.includes('dish.com')) return 'dish';
   if (domain.includes('cdn.')) return 'cdn';
-  
+
   return 'other';
 }
 
@@ -345,14 +341,14 @@ function calculateEstimatedSavings(imageData) {
  */
 function identifyQualityIssues(image) {
   const issues = [];
-  
+
   if (!image.src) issues.push('Missing source URL');
   if (!image.displayName) issues.push('Missing display name');
   if (image.src && image.src.includes('example.com')) issues.push('Example domain');
   if (image.displayName && image.displayName.toLowerCase().includes('placeholder')) issues.push('Placeholder content');
   if (!image.fileSize) issues.push('Unknown file size');
   if (!image.dimensions) issues.push('Unknown dimensions');
-  
+
   return issues;
 }
 
@@ -361,20 +357,20 @@ function identifyQualityIssues(image) {
  */
 function groupAssets(assets, groupBy) {
   const grouped = {};
-  
+
   for (const asset of assets) {
     let key;
     switch (groupBy) {
       case 'category': key = asset.category; break;
       case 'priority': key = asset.migrationPriority; break;
-      case 'domain': 
+      case 'domain':
       default: key = asset.domain; break;
     }
-    
+
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(asset);
   }
-  
+
   return grouped;
 }
 
@@ -383,33 +379,33 @@ function groupAssets(assets, groupBy) {
  */
 function generateInsights(assets, qualityStats) {
   const insights = [];
-  
+
   const junkPercentage = Math.round((qualityStats.junkFiltered / qualityStats.externalFound) * 100);
   if (junkPercentage > 20) {
     insights.push({
       type: 'warning',
       message: `High junk content detected: ${junkPercentage}% of external assets are low quality`,
-      action: 'Consider running cleanup operation'
+      action: 'Consider running cleanup operation',
     });
   }
-  
-  const scene7Assets = assets.filter(a => a.category === 'scene7').length;
+
+  const scene7Assets = assets.filter((a) => a.category === 'scene7').length;
   if (scene7Assets > 0) {
     insights.push({
       type: 'opportunity',
       message: `${scene7Assets} high-quality Scene7 assets found`,
-      action: 'Priority candidates for migration'
+      action: 'Priority candidates for migration',
     });
   }
-  
-  const lowQualityAssets = assets.filter(a => a.qualityScore < 40).length;
+
+  const lowQualityAssets = assets.filter((a) => a.qualityScore < 40).length;
   if (lowQualityAssets > 10) {
     insights.push({
       type: 'recommendation',
       message: `${lowQualityAssets} assets have low quality scores`,
-      action: 'Review and potentially exclude from migration'
+      action: 'Review and potentially exclude from migration',
     });
   }
-  
+
   return insights;
-} 
+}

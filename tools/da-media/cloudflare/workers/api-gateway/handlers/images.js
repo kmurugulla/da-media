@@ -3,11 +3,11 @@
  * Handles all image-related API endpoints with improved naming and data quality
  */
 
-import { 
-  validateMethod, 
-  createSuccessResponse, 
-  createErrorResponse, 
-  CONFIG 
+import {
+  validateMethod,
+  createSuccessResponse,
+  createErrorResponse,
+  CONFIG,
 } from '../utils.js';
 
 /**
@@ -15,7 +15,7 @@ import {
  */
 export async function handleGetImages(request, env) {
   validateMethod(request, ['GET']);
-  
+
   const url = new URL(request.url);
   const includeExternal = url.searchParams.get('includeExternal') === 'true' || url.searchParams.get('include_external') === 'true';
   const qualityFilter = url.searchParams.get('quality') || 'all'; // all, high, medium, low
@@ -26,18 +26,18 @@ export async function handleGetImages(request, env) {
 
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
     // Try org-aware keys first, then fallback to legacy keys
     let keys = [];
-    
+
     // Try to get org-aware keys (org:*:site:*:image:*)
     const orgKeys = await env.DA_MEDIA_KV.list({ prefix: 'org:' });
-    const imageKeys = orgKeys.keys.filter(key => key.name.includes(':image:'));
-    
+    const imageKeys = orgKeys.keys.filter((key) => key.name.includes(':image:'));
+
     if (imageKeys.length > 0) {
       keys = imageKeys;
     } else {
@@ -45,21 +45,19 @@ export async function handleGetImages(request, env) {
       const legacyKeys = await env.DA_MEDIA_KV.list({ prefix: CONFIG.PREFIXES.IMAGE });
       keys = legacyKeys.keys;
     }
-    
-    const imagePromises = keys.map(key => 
-      env.DA_MEDIA_KV.get(key.name, 'json')
-    );
-    
+
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
+
     const imageResults = await Promise.all(imagePromises);
-    let allImages = imageResults.filter(img => img !== null);
+    let allImages = imageResults.filter((img) => img !== null);
 
     const qualityStats = {
       total: allImages.length,
-      beforeFiltering: allImages.length
+      beforeFiltering: allImages.length,
     };
 
     if (!includeExternal) {
-      allImages = allImages.filter(img => !isExternalAsset(img.src));
+      allImages = allImages.filter((img) => !isExternalAsset(img.src));
       qualityStats.externalFiltered = qualityStats.beforeFiltering - allImages.length;
     }
 
@@ -83,25 +81,24 @@ export async function handleGetImages(request, env) {
         total: deduplicatedImages.length,
         limit,
         offset,
-        hasMore: offset + limit < deduplicatedImages.length
+        hasMore: offset + limit < deduplicatedImages.length,
       },
       qualityStats,
       filters: {
         includeExternal,
         qualityFilter,
         priority,
-        context
+        context,
       },
-      timestamp: new Date().toISOString()
-    }, { 
+      timestamp: new Date().toISOString(),
+    }, {
       cache: CONFIG.CACHE_TTL.IMAGES,
-      headers: { 'X-Cache': 'MISS' }
+      headers: { 'X-Cache': 'MISS' },
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to load images'
+      message: 'Failed to load images',
     });
   }
 }
@@ -111,21 +108,21 @@ export async function handleGetImages(request, env) {
  */
 export async function handleGetHighQualityImages(request, env) {
   validateMethod(request, ['GET']);
-  
+
   try {
     if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', { 
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR 
+      return createErrorResponse('KV storage not available', {
+        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
       });
     }
 
     // Try org-aware keys first, then fallback to legacy keys
     let keys = [];
-    
+
     // Try to get org-aware keys (org:*:site:*:image:*)
     const orgKeys = await env.DA_MEDIA_KV.list({ prefix: 'org:' });
-    const imageKeys = orgKeys.keys.filter(key => key.name.includes(':image:'));
-    
+    const imageKeys = orgKeys.keys.filter((key) => key.name.includes(':image:'));
+
     if (imageKeys.length > 0) {
       keys = imageKeys;
     } else {
@@ -133,15 +130,13 @@ export async function handleGetHighQualityImages(request, env) {
       const legacyKeys = await env.DA_MEDIA_KV.list({ prefix: CONFIG.PREFIXES.IMAGE });
       keys = legacyKeys.keys;
     }
-    
-    const imagePromises = keys.map(key => 
-      env.DA_MEDIA_KV.get(key.name, 'json')
-    );
-    
-    const imageResults = await Promise.all(imagePromises);
-    const allImages = imageResults.filter(img => img !== null);
 
-    const highQualityImages = allImages.filter(img => {
+    const imagePromises = keys.map((key) => env.DA_MEDIA_KV.get(key.name, 'json'));
+
+    const imageResults = await Promise.all(imagePromises);
+    const allImages = imageResults.filter((img) => img !== null);
+
+    const highQualityImages = allImages.filter((img) => {
       const qualityScore = getImageQualityScore(img.src);
       return qualityScore >= 70 && !isJunkAsset(img);
     });
@@ -155,18 +150,17 @@ export async function handleGetHighQualityImages(request, env) {
         totalScanned: allImages.length,
         highQualityFound: highQualityImages.length,
         afterDeduplication: deduplicatedImages.length,
-        qualityThreshold: 70
+        qualityThreshold: 70,
       },
-      timestamp: new Date().toISOString()
-    }, { 
+      timestamp: new Date().toISOString(),
+    }, {
       cache: CONFIG.CACHE_TTL.IMAGES,
-      headers: { 'X-Cache': 'MISS' }
+      headers: { 'X-Cache': 'MISS' },
     });
-
   } catch (error) {
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to load high-quality images'
+      message: 'Failed to load high-quality images',
     });
   }
 }
@@ -176,10 +170,10 @@ export async function handleGetHighQualityImages(request, env) {
  */
 function filterByQuality(images, qualityFilter) {
   if (qualityFilter === 'all') return images;
-  
-  return images.filter(img => {
+
+  return images.filter((img) => {
     const score = getImageQualityScore(img.src);
-    
+
     switch (qualityFilter) {
       case 'high': return score >= 70;
       case 'medium': return score >= 40 && score < 70;
@@ -194,10 +188,10 @@ function filterByQuality(images, qualityFilter) {
  */
 function isJunkAsset(image) {
   if (!image || !image.src || !image.displayName) return true;
-  
+
   const src = image.src.toLowerCase();
   const name = image.displayName.toLowerCase();
-  
+
   const junkIndicators = [
     'placeholder',
     'example.com',
@@ -208,12 +202,10 @@ function isJunkAsset(image) {
     'lorem',
     'internal image',
     'broken',
-    'missing'
+    'missing',
   ];
-  
-  return junkIndicators.some(indicator => 
-    src.includes(indicator) || name.includes(indicator)
-  );
+
+  return junkIndicators.some((indicator) => src.includes(indicator) || name.includes(indicator));
 }
 
 /**
@@ -221,14 +213,14 @@ function isJunkAsset(image) {
  */
 function isExternalAsset(src) {
   if (!src) return false;
-  
+
   const internalDomains = [
     'main--da-media--',
     'localhost',
-    '127.0.0.1'
+    '127.0.0.1',
   ];
-  
-  return !internalDomains.some(domain => src.includes(domain));
+
+  return !internalDomains.some((domain) => src.includes(domain));
 }
 
 /**
@@ -236,16 +228,16 @@ function isExternalAsset(src) {
  */
 function deduplicateImagesByQuality(images) {
   const imageMap = new Map();
-  
+
   for (const image of images) {
     const key = image.displayName || image.id;
     const existing = imageMap.get(key);
-    
+
     if (!existing || shouldReplaceImageForQuality(existing, image)) {
       imageMap.set(key, image);
     }
   }
-  
+
   return Array.from(imageMap.values());
 }
 
@@ -255,7 +247,7 @@ function deduplicateImagesByQuality(images) {
 function shouldReplaceImageForQuality(existing, candidate) {
   const existingScore = getImageQualityScore(existing.src);
   const candidateScore = getImageQualityScore(candidate.src);
-  
+
   return candidateScore > existingScore;
 }
 
@@ -264,9 +256,9 @@ function shouldReplaceImageForQuality(existing, candidate) {
  */
 function getImageQualityScore(src) {
   if (!src) return 0;
-  
+
   let score = 0;
-  
+
   if (src.includes('dish.scene7.com/is/image/dishenterprise/')) {
     score += 100;
   } else if (src.includes('dish.scene7.com/is/image/sling/')) {
@@ -284,7 +276,7 @@ function getImageQualityScore(src) {
   } else {
     score += 10;
   }
-  
+
   if (src.includes('$transparent-png-desktop$')) {
     score += 20;
   } else if (src.includes('format=webp')) {
@@ -292,11 +284,11 @@ function getImageQualityScore(src) {
   } else if (src.includes('optimize=medium')) {
     score += 10;
   }
-  
+
   if (src.includes('example.com') || src.includes('placeholder')) {
     score -= 50;
   }
-  
+
   return score;
 }
 
@@ -315,11 +307,11 @@ async function applyPriorityFiltering(images, priority, context, env) {
       }
 
       // Score images based on context relevance
-      const scoredImages = images.map(image => {
+      const scoredImages = images.map((image) => {
         let relevanceScore = 0;
         const name = (image.displayName || '').toLowerCase();
         const tags = image.detectedTags || [];
-        
+
         // Document type specific scoring
         if (parsedContext.documentType === 'blog') {
           if (name.includes('hero') || name.includes('banner')) relevanceScore += 30;
@@ -343,19 +335,18 @@ async function applyPriorityFiltering(images, priority, context, env) {
         return {
           ...image,
           aiRelevanceScore: relevanceScore,
-          recommendationReason: getAIRecommendationReason(image, parsedContext)
+          recommendationReason: getAIRecommendationReason(image, parsedContext),
         };
       });
 
       // Return top relevant images
       return scoredImages
-        .filter(img => img.aiRelevanceScore > 10) // Only reasonably relevant images
+        .filter((img) => img.aiRelevanceScore > 10) // Only reasonably relevant images
         .sort((a, b) => b.aiRelevanceScore - a.aiRelevanceScore);
-
-    } else if (priority === 'high-priority') {
+    } if (priority === 'high-priority') {
       // Return high-usage, high-quality images
       return images
-        .filter(img => {
+        .filter((img) => {
           const qualityScore = getImageQualityScore(img.src);
           const usageCount = img.usageCount || 0;
           return qualityScore > 70 || usageCount > 2;
@@ -379,21 +370,20 @@ async function applyPriorityFiltering(images, priority, context, env) {
  */
 function getAIRecommendationReason(image, context) {
   const name = (image.displayName || '').toLowerCase();
-  const documentType = context.documentType;
-  
+  const { documentType } = context;
+
   if (documentType === 'blog' && (name.includes('hero') || name.includes('banner'))) {
     return 'Perfect for blog headers';
-  } else if (documentType === 'team' && (name.includes('team') || name.includes('people'))) {
+  } if (documentType === 'team' && (name.includes('team') || name.includes('people'))) {
     return 'Great for team pages';
-  } else if (documentType === 'product' && (name.includes('product') || name.includes('feature'))) {
+  } if (documentType === 'product' && (name.includes('product') || name.includes('feature'))) {
     return 'Ideal for product showcase';
-  } else if (name.includes('hero') || name.includes('background')) {
+  } if (name.includes('hero') || name.includes('background')) {
     return 'High-impact visual';
-  } else if (image.usageCount > 2) {
+  } if (image.usageCount > 2) {
     return 'Popular choice';
-  } else if (getImageQualityScore(image.src) > 80) {
+  } if (getImageQualityScore(image.src) > 80) {
     return 'High quality asset';
-  } else {
-    return 'Contextually relevant';
   }
-} 
+  return 'Contextually relevant';
+}

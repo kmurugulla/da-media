@@ -8,17 +8,17 @@ export const CONFIG = {
   CACHE_TTL: {
     ANALYSIS: 24 * 60 * 60, // 24 hours in seconds
     IMAGES: 5 * 60, // 5 minutes in seconds
-    RATE_LIMIT: 60 * 60 // 1 hour in seconds
+    RATE_LIMIT: 60 * 60, // 1 hour in seconds
   },
   LIMITS: {
     RATE_LIMIT_MAX: 50,
     DEFAULT_PAGE_SIZE: 50,
-    MAX_PAGE_SIZE: 200
+    MAX_PAGE_SIZE: 200,
   },
   PREFIXES: {
     IMAGE: 'image:',
     ANALYSIS: 'analysis:',
-    RATE_LIMIT: 'rate:'
+    RATE_LIMIT: 'rate:',
   },
   SUPPORTED_FORMATS: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   HTTP_STATUS: {
@@ -28,8 +28,8 @@ export const CONFIG = {
     NOT_FOUND: 404,
     METHOD_NOT_ALLOWED: 405,
     RATE_LIMITED: 429,
-    INTERNAL_ERROR: 500
-  }
+    INTERNAL_ERROR: 500,
+  },
 };
 
 // Centralized CORS headers
@@ -42,61 +42,61 @@ export const CORS_HEADERS = {
 // Common response headers
 export const JSON_HEADERS = {
   'Content-Type': 'application/json',
-  ...CORS_HEADERS
+  ...CORS_HEADERS,
 };
 
 // CORS preflight handler
 export function handleCORSPreflight() {
-  return new Response(null, { 
+  return new Response(null, {
     status: CONFIG.HTTP_STATUS.OK,
-    headers: CORS_HEADERS 
+    headers: CORS_HEADERS,
   });
 }
 
 // Standardized success response
 export function createSuccessResponse(data, options = {}) {
   const { status = CONFIG.HTTP_STATUS.OK, headers = {}, cache = false } = options;
-  
+
   const responseHeaders = {
     ...JSON_HEADERS,
-    ...headers
+    ...headers,
   };
-  
+
   if (cache && typeof cache === 'number') {
     responseHeaders['Cache-Control'] = `public, max-age=${cache}`;
   }
-  
+
   return new Response(JSON.stringify(data), {
     status,
-    headers: responseHeaders
+    headers: responseHeaders,
   });
 }
 
 // Standardized error response
 export function createErrorResponse(error, options = {}) {
-  const { 
-    status = CONFIG.HTTP_STATUS.INTERNAL_ERROR, 
+  const {
+    status = CONFIG.HTTP_STATUS.INTERNAL_ERROR,
     message = 'Internal server error',
     headers = {},
-    includeStack = false
+    includeStack = false,
   } = options;
-  
+
   const errorData = {
     error: message,
     message: error.message || error,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
-  
+
   if (includeStack && error.stack) {
     errorData.stack = error.stack;
   }
-  
+
   return new Response(JSON.stringify(errorData), {
     status,
     headers: {
       ...JSON_HEADERS,
-      ...headers
-    }
+      ...headers,
+    },
   });
 }
 
@@ -110,20 +110,20 @@ export function validateMethod(request, allowedMethods) {
 // Rate limiting utility
 export async function checkRateLimit(request, env, key = null) {
   if (!env.DA_MEDIA_KV) return true;
-  
+
   const rateLimitKey = key || `${CONFIG.PREFIXES.RATE_LIMIT}${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
   const currentCount = await env.DA_MEDIA_KV.get(rateLimitKey) || '0';
-  
+
   if (parseInt(currentCount) > CONFIG.LIMITS.RATE_LIMIT_MAX) {
     throw new Error('Rate limit exceeded. Please try again later.');
   }
-  
+
   await env.DA_MEDIA_KV.put(
-    rateLimitKey, 
-    (parseInt(currentCount) + 1).toString(), 
-    { expirationTtl: CONFIG.CACHE_TTL.RATE_LIMIT }
+    rateLimitKey,
+    (parseInt(currentCount) + 1).toString(),
+    { expirationTtl: CONFIG.CACHE_TTL.RATE_LIMIT },
   );
-  
+
   return true;
 }
 
@@ -149,11 +149,11 @@ export function isValidUrl(string) {
 // File size formatter
 export function formatFileSize(bytes) {
   if (!bytes || bytes === 0) return '0 B';
-  
+
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+
+  return `${(bytes / 1024 ** i).toFixed(1)} ${sizes[i]}`;
 }
 
 /**
@@ -161,32 +161,33 @@ export function formatFileSize(bytes) {
  */
 export function asyncHandler(fn) {
   return async (request, env, ...args) => {
+    // Handle CORS preflight requests FIRST, before any other processing
+    if (request.method === 'OPTIONS') {
+      return handleCORSPreflight();
+    }
+
     try {
-      if (request.method === 'OPTIONS') {
-        return handleCORSPreflight();
-      }
-      
       return await fn(request, env, ...args);
     } catch (error) {
       let status = CONFIG.HTTP_STATUS.INTERNAL_ERROR;
       let message = 'Internal server error';
-      
+
       if (error.message.includes('not allowed')) {
         status = CONFIG.HTTP_STATUS.METHOD_NOT_ALLOWED;
         message = 'Method not allowed';
       } else if (error.message.includes('Rate limit')) {
         status = CONFIG.HTTP_STATUS.RATE_LIMITED;
         message = 'Rate limit exceeded';
-        return createErrorResponse(error, { 
-          status, 
+        return createErrorResponse(error, {
+          status,
           message,
-          headers: { 'Retry-After': '3600' }
+          headers: { 'Retry-After': '3600' },
         });
       } else if (error.message.includes('required') || error.message.includes('invalid')) {
         status = CONFIG.HTTP_STATUS.BAD_REQUEST;
         message = 'Bad request';
       }
-      
+
       return createErrorResponse(error, { status, message });
     }
   };
@@ -197,10 +198,10 @@ export function parsePaginationParams(url) {
   const page = parseInt(url.searchParams.get('page')) || 1;
   const limit = Math.min(
     parseInt(url.searchParams.get('limit')) || CONFIG.LIMITS.DEFAULT_PAGE_SIZE,
-    CONFIG.LIMITS.MAX_PAGE_SIZE
+    CONFIG.LIMITS.MAX_PAGE_SIZE,
   );
   const offset = (page - 1) * limit;
-  
+
   return { page, limit, offset };
 }
 
@@ -217,15 +218,15 @@ export function withTiming(response, startTime) {
 export function logRequest(request, context = {}) {
   const { method, url } = request;
   const timestamp = new Date().toISOString();
-  
+
   // Structured logging - can be connected to external logging service
   const logData = {
     timestamp,
     method,
     url: url.toString(),
-    ...context
+    ...context,
   };
-  
+
   // Remove console.log as requested - replace with proper logging service integration
   // console.log(JSON.stringify(logData));
-} 
+}
