@@ -33,10 +33,20 @@ export class SearchManager {
         ...(asset.tags || []).map(tag => tag.toLowerCase()),
         asset.category.toLowerCase(),
         asset.type.toLowerCase()
+        // Explicitly exclude scan metadata fields
       ];
 
       allTerms.forEach(term => {
-        if (term.length > 3 && !term.match(/^\d+$/) && !['image', 'external', 'internal'].includes(term)) {
+        const excludedTerms = [
+          'image', 'external', 'internal', 
+          'github-actions-publish', 'github', 'actions', 'publish',
+          'scan', 'trigger', 'metadata', 'preview', 'manual',
+          'unknown', 'sourceType'
+        ];
+        
+        if (term.length > 3 && 
+            !term.match(/^\d+$/) && 
+            !excludedTerms.includes(term.toLowerCase())) {
           termCounts.set(term, (termCounts.get(term) || 0) + 1);
         }
       });
