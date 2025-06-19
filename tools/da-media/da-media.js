@@ -260,8 +260,13 @@ class DAMediaLibrary {
     }
 
     if (assetCountEl) {
-      // Show total number of assets instead of just images
-      assetCountEl.textContent = this.assets.length;
+      // Count assets actually used in the current document
+      const currentPath = Utils.getCurrentDocumentPath() || '/demo';
+      const currentDocumentAssets = this.assets.filter(asset => 
+        asset.usedInCurrentDocument || 
+        (asset.usedInPages && asset.usedInPages.some(page => page.path === currentPath))
+      );
+      assetCountEl.textContent = currentDocumentAssets.length;
     }
   }
 
