@@ -1,0 +1,78 @@
+name: Media Analysis on Publish
+
+on:
+  repository_dispatch:
+    types:
+      - resource-published
+
+jobs:
+  analyze-media:
+    # Only run for markdown files (documents)
+    if: endsWith(github.event.client_payload.path, '.md')
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Log publish event details
+      run: |
+        echo "📄 Document published:"
+        echo "  Site: ${{ github.event.client_payload.site }}"
+        echo "  Org: ${{ github.event.client_payload.org }}"  
+        echo "  Path: ${{ github.event.client_payload.path }}"
+        echo "  Status: ${{ github.event.client_payload.status }}"
+
+    - name: Analyze images in published content
+      if: (github.event.client_payload.status == 200 || github.event.client_payload.status == 204)
+      run: |
+        # Remove .md extension and build preview plain HTML URL
+        CONTENT_PATH="${{ github.event.client_payload.path }}"
+        CLEAN_PATH="${CONTENT_PATH%.md}"
+        
+        # Build preview plain HTML URL (using .aem.page domain as .plain.html only works there)
+        PREVIEW_URL="https://main--${{ github.event.client_payload.site }}--${{ github.event.client_payload.org }}.aem.page${CLEAN_PATH}.plain.html"
+        
+        echo "🔍 Fetching content from: $PREVIEW_URL"
+        
+        # Test if preview URL is accessible
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL")
+        
+        if [ "$HTTP_STATUS" = "200" ]; then
+          echo "✅ Preview content accessible"
+          
+          # Send to Cloudflare Worker for image analysis
+          curl -X POST "https://da-media-library.adobeaem.workers.dev/api/scan-preview-content" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions-Media-Analysis/1.0" \
+            -d "{
+              \"previewUrl\": \"$PREVIEW_URL\",
+              \"path\": \"${{ github.event.client_payload.path }}\",
+              \"site\": \"${{ github.event.client_payload.site }}\",
+              \"org\": \"${{ github.event.client_payload.org }}\",
+              \"publishedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+              \"trigger\": \"github-actions-publish\"
+            }" \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5
+          
+          echo "✅ Image analysis request sent to Cloudflare Worker"
+        else
+          echo "❌ Preview content not accessible (HTTP $HTTP_STATUS)"
+          echo "ℹ️  This might be expected for non-content files or if preview is still building"
+        fi
+
+  status-checker:
+    needs: analyze-media
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Report analysis status
+      run: |
+        if [ "${{ needs.analyze-media.result }}" = "success" ]; then
+          echo "✅ Media analysis completed successfully"
+        elif [ "${{ needs.analyze-media.result }}" = "skipped" ]; then
+          echo "⏭️  Media analysis skipped (not a markdown file)"
+        else
+          echo "❌ Media analysis failed or was cancelled"
+          echo "Check the analyze-media job logs for details"
+        fi 

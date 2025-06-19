@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>DA Media Library</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="description" content="AI-powered media asset discovery and management"/>
+    <link rel="icon" href="data:,">
+    <!-- DA Media Library Logic -->
+    <script src="/tools/da-media/da-media.js" type="module"></script>
+    <!-- Adobe Styles -->
+    <link rel="stylesheet" href="https://use.typekit.net/hah7vzn.css">
+    <!-- DA Media Library Styles -->
+    <link rel="stylesheet" href="da-media.css">
+  </head>
+  <body>
+    <div class="media-library">
+      <!-- Left Sidebar Navigation -->
+      <aside class="sidebar" role="navigation" aria-label="Asset navigation">
+        <div class="sidebar-header">
+          <h2>Assets</h2>
+        </div>
+        
+        <div class="sidebar-section">
+          <div class="section-header">All Assets</div>
+          <div class="folder-tree" role="list">
+            <div class="folder-item active" data-filter="all" role="listitem" tabindex="0" aria-selected="true">
+              <span class="folder-icon" aria-hidden="true">📁</span>
+              <span class="folder-name">All Assets</span>
+              <span class="asset-count" id="totalCount" aria-label="Total asset count">0</span>
+            </div>
+            <div class="folder-item" data-filter="internal" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🏠</span>
+              <span class="folder-name">Internal</span>
+              <span class="asset-count" id="internalCount" aria-label="Internal asset count">0</span>
+            </div>
+            <div class="folder-item" data-filter="external" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🌐</span>
+              <span class="folder-name">External</span>
+              <span class="asset-count" id="externalCount" aria-label="External asset count">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-header">Asset Types</div>
+          <div class="folder-tree" role="list">
+            <div class="folder-item" data-filter="image" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🖼️</span>
+              <span class="folder-name">Images</span>
+              <span class="asset-count" id="imageCount" aria-label="Image count">0</span>
+            </div>
+            <div class="folder-item" data-filter="video" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">🎬</span>
+              <span class="folder-name">Videos</span>
+              <span class="asset-count" id="videoCount" aria-label="Video count">0</span>
+            </div>
+            <div class="folder-item" data-filter="document" role="listitem" tabindex="0">
+              <span class="folder-icon" aria-hidden="true">📄</span>
+              <span class="folder-name">Documents</span>
+              <span class="asset-count" id="documentCount" aria-label="Document count">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="document-info">
+            <div class="document-info-header">
+              <h3 class="document-info-title">Current Document</h3>
+            </div>
+            
+            <div class="info-section">
+              <div class="info-label">
+                Path
+              </div>
+              <div class="info-value path-value" id="documentPath">Loading...</div>
+            </div>
+            
+            <div class="info-section">
+              <div class="info-label">
+                No. Of Assets
+              </div>
+              <div class="info-value count-value" id="documentImageCount">0</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content" role="main">
+        <!-- Top Bar -->
+        <div class="top-bar">
+          <div class="search-container">
+            <input 
+              type="text" 
+              class="search-input" 
+              placeholder="Search assets..."
+              id="nlpSearch"
+              aria-label="Search assets"
+              autocomplete="off"
+            />
+            <div class="search-suggestions" id="searchSuggestions" role="listbox" aria-hidden="true">
+              <!-- Dynamic suggestions will be populated here -->
+            </div>
+            <div class="quick-search-labels" id="quickSearchLabels" role="list" aria-label="Quick search options">
+              <!-- Dynamic labels will be populated here based on actual asset data -->
+            </div>
+          </div>
+          <div class="view-controls" role="group" aria-label="View controls">
+            <button class="view-btn active" data-view="grid" title="Grid View" aria-pressed="true">⊞</button>
+            <button class="view-btn" data-view="list" title="List View" aria-pressed="false">☰</button>
+          </div>
+        </div>
+
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb" aria-label="Current location">
+          <span class="breadcrumb-item">All Assets</span>
+        </nav>
+
+        <!-- Assets Grid -->
+        <div class="assets-container">
+          <div class="assets-grid" id="assetsGrid" role="grid" aria-label="Asset grid">
+            <div class="loading" role="status" aria-live="polite">
+              Loading assets...
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html> 

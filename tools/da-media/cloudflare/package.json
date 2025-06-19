@@ -1,0 +1,36 @@
+{
+  "name": "@da/media-library-infrastructure",
+  "version": "1.0.0",
+  "description": "Cloudflare infrastructure for DA Media Library Plugin",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "setup": "node scripts/setup-infrastructure.js",
+    "db:migrate": "wrangler d1 migrations apply da-media-library",
+    "db:local": "wrangler d1 migrations apply da-media-library --local",
+    "test": "vitest",
+    "lint": "eslint workers/"
+  },
+  "dependencies": {
+    "@cloudflare/ai": "^1.0.0",
+    "hono": "^4.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "@types/node": "^20.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "wrangler": "^3.0.0"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "da-media-library",
+    "ai",
+    "infrastructure"
+  ]
+} 

@@ -1,0 +1,38 @@
+name = "da-media-library"
+main = "workers/api-gateway/index.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables
+[vars]
+AI_PROVIDER = "cloudflare"
+ENVIRONMENT = "development"
+LOG_LEVEL = "info"
+
+# KV Namespaces for asset metadata and caching
+[[kv_namespaces]]
+binding = "DA_MEDIA_KV"
+id = "ed3a46b6434145f98780134d0fe4a391"
+
+[[kv_namespaces]]
+binding = "DA_MEDIA_CACHE"
+id = "51b1ed6dee0c43acac749088f89b262d"
+
+# D1 Database for analytics and metadata
+[[d1_databases]]
+binding = "DA_MEDIA_DB"
+database_name = "da-media-library"
+database_id = "c347f6e8-f5e9-4e74-9876-78a797916a1d"
+
+# R2 Buckets for ML models and cache objects
+[[r2_buckets]]
+binding = "DA_MEDIA_MODELS"
+bucket_name = "da-media-models"
+
+[[r2_buckets]]
+binding = "DA_MEDIA_CACHE_R2"
+bucket_name = "da-media-cache"
+
+# AI binding for Cloudflare AI
+[ai]
+binding = "AI" 
