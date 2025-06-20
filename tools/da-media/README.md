@@ -1,12 +1,12 @@
 # DA Media Library Plugin
 
-AI-powered Media Library Plugin for DA (Document Authoring) that enables intelligent asset discovery through natural language queries and predictive recommendations.
+A media management tool for DA (Document Authoring) that enables asset discovery, reuse, and insertion across your content.
 
 ## Interface Overview
 
 ![DA Media Library Interface](screenshot.png)
 
-The DA Media Library provides an intuitive interface for managing and discovering assets across your organization's content.
+The DA Media Library provides a straightforward interface for browsing and reusing assets across your organization's content.
 
 ## Architecture Overview
 
@@ -32,220 +32,130 @@ tools/da-media/
 └── README.md                    # This file - main plugin documentation
 ```
 
-## Key Features
+## Current Features ✅
 
-### 📚 **Asset Management & Discovery**
-- **Lists Assets Used Across Pages**: View all assets embedded in documents and inserted as links across your site
-- **Current Page Asset Tracking**: See count and details of assets used on the currently opened page
-- **Smart Categorization**: Organized by Internal/External sources and asset types (Images, Videos, Documents)
-- **Natural Language Search**: Find assets using descriptive queries like "hero images for landing pages"
-
-### 🖱️ **Asset Interaction & Insertion**
-- **Click-to-Insert**: Single-click asset insertion directly into your document
-- **External Asset Linking**: Insert external images as clickable links rather than embedded content
-- **Asset Preview**: View assets in responsive mode showing how they appear on desktop, tablet, and mobile
-- **Open in New Tab**: Quick access to view full-resolution assets in separate windows
-
-### 📊 **Usage Analytics & Management**
-- **Asset Usage Tracking**: See exactly which pages use each asset across your site
-- **Usage Page Navigation**: Open pages that use specific assets in new tabs for quick editing
-- **Usage Count Display**: Visual indicators showing how frequently assets are reused
-
-### 🎨 **Interface & User Experience**
+### 📚 **Asset Browsing & Discovery**
+- **Asset Library**: Browse all media assets used across your DA site
+- **Search Functionality**: Basic text search to find assets by name or type
+- **Categorization**: Filter assets by type (Images, Videos, Documents) and source (Internal/External)
 - **Grid and List Views**: Toggle between visual grid and detailed list presentations
-- **Responsive Design**: Optimized interface that works across all device sizes
-- **Real-time Updates**: Asset library updates automatically as content changes
 
-### 🧠 AI-Powered Discovery
-- **Context-Aware Recommendations**: Based on document analysis
+### 🖱️ **Asset Insertion**
+- **Click-to-Insert**: Single-click insertion of assets directly into your DA documents
+- **Preview Modal**: View assets in detail before insertion
+- **Usage Tracking**: See which pages currently use each asset
+- **Multi-format Support**: Handle various image, video, and document formats
+
+### 🎨 **User Interface**
+- **Responsive Design**: Works across desktop, tablet, and mobile devices
+- **DA Integration**: Seamless integration with DA's authoring environment
+- **Filter Sidebar**: Easy filtering by asset type and source
+
+### 🏗️ **Infrastructure**
+- **Cloudflare Backend**: API gateway and storage for asset metadata
+- **Multi-tenant Support**: Isolated by DA org/repo structure
+- **Basic Caching**: Asset metadata caching for performance
+
+## Coming Soon 🚧
+
+### 🧠 **AI-Powered Features** (Future)
+- **Natural Language Search**: "Find hero images for landing pages"
+- **Context-Aware Recommendations**: Smart suggestions based on document content
 - **Visual Similarity Search**: Find assets similar to existing ones
-- **Predictive Asset Grid**: AI-recommended assets on plugin open
+- **Predictive Asset Grid**: AI-recommended assets
 
-### ⚡ Performance Optimized
+### ⚡ **Performance Enhancements** (Future)
 - **Virtual Scrolling**: Handle 100K+ assets smoothly
-- **Multi-Level Caching**: Memory → IndexedDB → Cloudflare KV → DA Source
-- **Background Processing**: Non-blocking AI analysis
-- **Edge Computing**: Global performance via Cloudflare Workers
+- **Advanced Caching**: Multi-level caching strategy
+- **Background Processing**: Non-blocking analysis
 
-### 🗂️ Smart Asset Management
-- **Asset Removal Decision Matrix**: Intelligent cleanup strategies
-- **Multi-Tenant Support**: Org/repo isolation
-- **Real-Time Sync**: Instant asset availability
-
-## Asset Removal Decision Matrix
-
-```
-├── Document-Level Removal
-│   ├── Asset removed from single document → Keep in library
-│   ├── Asset used in multiple documents → Keep in library  
-│   ├── Asset removed from last document → Mark as unused, keep
-│   └── Reasoning: Asset may be reused in future content
-│
-├── DA Storage Deletion
-│   ├── Asset deleted from DA → Remove from library immediately
-│   ├── Asset moved/renamed in DA → Update library references
-│   ├── Asset becomes inaccessible → Mark as broken, cleanup later
-│   └── Reasoning: DA is source of truth
-│
-├── Automated Cleanup
-│   ├── Unused assets > 90 days → Soft delete (mark inactive)
-│   ├── Broken links > 30 days → Hard delete from library
-│   ├── Duplicate detection → Consolidate, keep best version
-│   └── Storage optimization → Remove low-quality duplicates
-│
-└── Manual Management
-    ├── Admin-initiated cleanup → Bulk removal operations
-    ├── User-reported issues → Manual investigation
-    ├── Asset quality review → Remove poor-quality assets
-    └── Brand compliance → Remove non-compliant assets
-```
+### 📊 **Analytics & Management** (Future)
+- **Usage Analytics**: Detailed asset usage reports
+- **Automated Cleanup**: Smart removal of unused assets
+- **Asset Optimization**: Automatic quality improvements
 
 ## Quick Start
 
-### 1. Infrastructure Setup (First Time Only)
+### 1. Basic Usage
+```bash
+# Open the plugin in DA
+# - Navigate to tools/da-media/da-media.html in your DA environment
+# - Browse available assets using the interface
+# - Click assets to insert them into your document
+```
 
+### 2. Infrastructure Setup (Optional - For Advanced Features)
 ```bash
 cd tools/da-media/cloudflare
 npm install
 npm run setup
 ```
 
-This will:
-- ✅ Create Cloudflare KV namespaces
-- ✅ Create D1 database
-- ✅ Create R2 buckets
-- ✅ Apply database schema
-- ✅ Deploy Workers
+This sets up the Cloudflare backend for enhanced asset management and caching.
 
-### 2. Test Plugin in DA
+## Integration with DA
 
-Simply open the HTML file in DA:
-- `da-media.html` - Complete plugin interface
-- `da-media.js` - Plugin logic with AI features
-
-### 3. Integration with DA
-
-The plugin automatically integrates with DA through:
+The plugin integrates with DA through:
 - **DA SDK**: For context detection and asset insertion
-- **DA Source API**: For asset discovery and monitoring
-- **DA Authentication**: Inherits org/repo permissions
+- **DA Source API**: For asset discovery and monitoring  
+- **DA Authentication**: Inherits org/repo permissions automatically
 
 ## Usage
 
-### Natural Language Search
-```javascript
-// User types: "professional headshots for team page"
-// AI converts to structured search:
-{
-  asset_types: ["image"],
-  categories: ["professional", "people", "headshots"],
-  use_cases: ["team", "about", "staff"],
-  filters: { orientation: "portrait", style: "professional" }
-}
-```
+### Basic Workflow
+1. Open `da-media.html` in your DA environment
+2. Browse assets using search and filters
+3. Click any asset to insert it into your document
+4. Use preview modal to view assets before insertion
 
-### Context-Aware Recommendations
-```javascript
-// Document analysis triggers automatic recommendations
-// Based on: content type, existing assets, user patterns
-const recommendations = await generateRecommendations({
-  documentType: "landing-page",
-  section: "hero",
-  userHistory: userPatterns,
-  contentTheme: "saas-product"
-});
-```
+### Asset Management
+- Assets are automatically discovered from your DA content
+- External assets are tracked and categorized
+- Usage tracking shows which pages use each asset
 
-## Cost Structure
+## Technical Details
 
-### Free Tier (POC)
-- **Workers**: 100K requests/day
-- **KV Storage**: 1GB + 100K reads/day
-- **D1 Database**: 5GB + 25M rows/day
-- **R2 Storage**: 10GB + 1M operations/month
-- **AI Processing**: 10K requests/day
+### File Structure
+- **`da-media.html`** - Main plugin interface
+- **`da-media.js`** - Core plugin logic and DA SDK integration
+- **`modules/`** - Modular components (asset loading, rendering, search, etc.)
+- **`cloudflare/`** - Backend infrastructure for enhanced features
 
-**Total Cost**: $0/month
+### Architecture Principles
+- **DA-Native Design**: DA remains the source of truth for all assets
+- **Modular Architecture**: Clean separation of concerns across modules
+- **Performance Focused**: Efficient asset loading and rendering
 
-### Professional Tier
-- **Estimated Cost**: $50-200/month
-- **Supports**: 10K+ assets, advanced AI, priority support
+## Development
 
-### Enterprise Tier
-- **Estimated Cost**: $1000-4000/month
-- **Supports**: Unlimited assets, custom models, SLA
-
-## Development Workflow
-
-### Plugin Development
+### Making Changes
 ```bash
-# Edit the plugin files directly
+# Edit plugin files directly - no build process needed
 # - da-media.html for UI changes
 # - da-media.js for functionality changes
+# - modules/* for specific feature changes
 
-# No build process needed - uses vanilla JS + DA SDK
 # Test by opening da-media.html in DA
 ```
 
-### Cloudflare Management
+### Optional Backend Setup
 ```bash
-# Deploy updates
-cd cloudflare && npm run deploy
-
-# Check database
-npm run db:query "SELECT COUNT(*) FROM asset_metadata"
-
-# View logs
-wrangler tail
+# For enhanced features (caching, analytics)
+cd cloudflare && npm install && npm run setup
 ```
-
-### Shared Utilities
-```bash
-# Build shared types
-cd shared && npm run build
-
-# Used by both frontend and infrastructure
-```
-
-## Architecture Principles
-
-### 1. DA-Native Design
-- No separate asset storage - DA remains source of truth
-- Seamless integration with existing DA workflows
-- Inherits DA's authentication and permissions
-
-### 2. Intelligence Layer
-- AI enhancement without workflow disruption
-- Background processing doesn't block user actions
-- Continuous learning from user interactions
-
-### 3. Performance First
-- Virtual scrolling for large asset libraries
-- Multi-level caching strategy
-- Edge computing for global performance
-
-### 4. Scalable Infrastructure
-- Multi-tenant architecture
-- Cloudflare edge network
-- Cost-efficient scaling
 
 ## Contributing
 
-### Setup Development Environment
 1. Clone repository
-2. Set up Cloudflare: `cd cloudflare && npm run setup`
-3. Test plugin by opening `da-media.html` in DA
-
-### Testing
-- **Frontend**: Component tests with Vitest
-- **Backend**: Worker tests with Wrangler
-- **Integration**: End-to-end DA integration tests
+2. Make changes to plugin files
+3. Test in DA environment
+4. Submit pull request
 
 ## Support
 
-- **Documentation**: See component-specific READMEs
 - **Issues**: Create GitHub issues for bugs/features
-- **Architecture**: See `DA-Media-Library-Architecture.md`
+- **Documentation**: See individual module READMEs for technical details
+- **Architecture**: See `DA-Media-Library-Architecture.md` for system design
 
 ## License
 
@@ -253,4 +163,4 @@ Apache 2.0 - See LICENSE file for details.
 
 ---
 
-*This plugin enhances DA's content creation workflow with AI-powered asset discovery while maintaining the simplicity and performance that makes DA effective.* 
+*A practical media management tool that enhances DA's content creation workflow.* 
