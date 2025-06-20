@@ -108,7 +108,8 @@ export class AssetLoader {
 
       // For external assets from known image CDNs, assume image type if detection failed
       if (isExternal && assetType === 'unknown') {
-        if (img.src && (img.src.includes('scene7.com') || img.src.includes('cloudfront.net') || img.src.includes('akamai') || img.src.includes('/image/'))) {
+        if (img.src && (img.src.includes('scene7.com') || img.src.includes('cloudfront.net')
+          || img.src.includes('akamai') || img.src.includes('/image/'))) {
           assetType = 'image';
         }
       }

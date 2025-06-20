@@ -17,12 +17,13 @@ export async function handleGetImages(request, env) {
   validateMethod(request, ['GET']);
 
   const url = new URL(request.url);
-  const includeExternal = url.searchParams.get('includeExternal') === 'true' || url.searchParams.get('include_external') === 'true';
+  const includeExternal = url.searchParams.get('includeExternal') === 'true'
+    || url.searchParams.get('include_external') === 'true';
   const qualityFilter = url.searchParams.get('quality') || 'all'; // all, high, medium, low
   const priority = url.searchParams.get('priority'); // 'ai-recommended', 'high-priority'
   const context = url.searchParams.get('context'); // document context for AI recommendations
-  const limit = parseInt(url.searchParams.get('limit')) || CONFIG.LIMITS.DEFAULT_PAGE_SIZE;
-  const offset = parseInt(url.searchParams.get('offset')) || 0;
+  const limit = parseInt(url.searchParams.get('limit'), 10) || CONFIG.LIMITS.DEFAULT_PAGE_SIZE;
+  const offset = parseInt(url.searchParams.get('offset'), 10) || 0;
 
   try {
     if (!env.DA_MEDIA_KV) {
@@ -66,7 +67,7 @@ export async function handleGetImages(request, env) {
 
     // Apply AI-powered priority filtering if requested
     if (priority) {
-      allImages = await applyPriorityFiltering(allImages, priority, context, env);
+      allImages = await applyPriorityFiltering(allImages, priority, context);
       qualityStats.afterPriorityFilter = allImages.length;
     }
 
@@ -295,7 +296,7 @@ function getImageQualityScore(src) {
 /**
  * Apply AI-powered priority filtering for contextual recommendations
  */
-async function applyPriorityFiltering(images, priority, context, env) {
+async function applyPriorityFiltering(images, priority, context) {
   try {
     if (priority === 'ai-recommended' && context) {
       // Parse context if it's a string
@@ -360,6 +361,7 @@ async function applyPriorityFiltering(images, priority, context, env) {
 
     return images; // No filtering applied
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Priority filtering failed:', error);
     return images; // Return original images on error
   }

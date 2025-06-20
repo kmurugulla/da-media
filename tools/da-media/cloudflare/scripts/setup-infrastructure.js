@@ -22,8 +22,11 @@ const WRANGLER_CONFIG = join(PROJECT_ROOT, 'wrangler.toml');
 class CloudflareSetup {
   constructor() {
     this.config = {};
+    // eslint-disable-next-line no-console
     this.log = (message) => console.log(`🔧 ${message}`);
+    // eslint-disable-next-line no-console
     this.error = (message) => console.error(`❌ ${message}`);
+    // eslint-disable-next-line no-console
     this.success = (message) => console.log(`✅ ${message}`);
   }
 

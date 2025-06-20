@@ -271,7 +271,8 @@ export class AssetRenderer {
       // Check if we have a valid URL to display
       if (imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('/'))) {
         // Skip obviously broken URLs
-        if (imageUrl.includes('undefined') || imageUrl.includes('[EXTERNAL]') || imageUrl.includes('https___') || imageUrl === 'null' || imageUrl === null) {
+        if (imageUrl.includes('undefined') || imageUrl.includes('[EXTERNAL]')
+          || imageUrl.includes('https___') || imageUrl === 'null' || imageUrl === null) {
           this.createIconPreview(preview, asset);
           return preview;
         }
@@ -290,7 +291,8 @@ export class AssetRenderer {
         img.style.transition = 'opacity 0.3s ease';
 
         // Add crossorigin for external images to handle CORS, but skip Scene7 and other CDNs that don't support it
-        if (asset.isExternal && !imageUrl.includes('aem.page') && !imageUrl.includes('scene7.com') && !imageUrl.includes('cloudfront.net')) {
+        if (asset.isExternal && !imageUrl.includes('aem.page')
+          && !imageUrl.includes('scene7.com') && !imageUrl.includes('cloudfront.net')) {
           img.crossOrigin = 'anonymous';
         }
 
@@ -356,8 +358,10 @@ export class AssetRenderer {
    */
   insertAsLink(asset) {
     const actualUrl = asset.originalUrl || asset.url;
-    if (!actualUrl || !actualUrl.startsWith('http') || actualUrl.includes('https___') || actualUrl.includes('[EXTERNAL]')) {
-      alert(`No valid URL available for this external asset.\n\nAsset: ${asset.name}\nURL: ${actualUrl || 'None'}`);
+    if (!actualUrl || !actualUrl.startsWith('http') || actualUrl.includes('https___')
+      || actualUrl.includes('[EXTERNAL]')) {
+      // eslint-disable-next-line no-console
+      console.error('No valid URL available for external asset:', asset.name, actualUrl);
       return;
     }
 
@@ -376,8 +380,8 @@ export class AssetRenderer {
       };
       this.assetInsertion.insertAsset(linkAsset);
     } else {
-      // Fallback for development
-      alert(`Insert as Link:\n${linkHtml}`);
+      // eslint-disable-next-line no-console
+      console.warn('Asset insertion not available - would insert:', linkHtml);
     }
   }
 
@@ -389,15 +393,18 @@ export class AssetRenderer {
 
     if (asset.isExternal) {
       assetUrl = asset.originalUrl || asset.url;
-      if (!assetUrl || !assetUrl.startsWith('http') || assetUrl.includes('https___') || assetUrl.includes('[EXTERNAL]')) {
-        alert(`No valid URL available for this external asset.\n\nAsset: ${asset.name}\nURL: ${assetUrl || 'None'}`);
+      if (!assetUrl || !assetUrl.startsWith('http') || assetUrl.includes('https___')
+        || assetUrl.includes('[EXTERNAL]')) {
+        // eslint-disable-next-line no-console
+        console.error('No valid URL available for external asset:', asset.name, assetUrl);
         return;
       }
     } else {
       // For internal assets, use the standard URL
       assetUrl = asset.url || asset.src;
       if (!assetUrl) {
-        alert(`No URL available for this asset.\n\nAsset: ${asset.name}`);
+        // eslint-disable-next-line no-console
+        console.error('No URL available for asset:', asset.name);
         return;
       }
     }

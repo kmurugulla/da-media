@@ -9,9 +9,9 @@ import { AssetLoader } from './modules/asset-loader.js';
 import { AssetRenderer } from './modules/asset-renderer.js';
 import { SearchManager } from './modules/search.js';
 import { AssetInsertion } from './modules/asset-insertion.js';
-import { Utils } from './modules/utils.js';
+// import { Utils } from './modules/utils.js';
 import { getApiEndpoint } from './modules/config.js';
-import { getDocumentSpecificAssets, filterAssetsByDocumentUsage, updateDocumentUsageCounts } from './modules/document-usage.js';
+import { filterAssetsByDocumentUsage } from './modules/document-usage.js';
 
 /**
  * DA Media Library Main Application
@@ -55,6 +55,7 @@ class DAMediaLibrary {
         }));
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.warn('DA SDK not available, using fallback context');
       this.context = null;
       this.actions = null;
@@ -246,7 +247,7 @@ class DAMediaLibrary {
     const documentCount = this.assets.filter((asset) => asset.type === 'document').length;
 
     // Update counts for document-specific filters
-    const documentCounts = updateDocumentUsageCounts(this.assets, this.context);
+    // const documentCounts = updateDocumentUsageCounts(this.assets, this.context);
 
     // Update counts in existing HTML elements
     const totalCountEl = document.getElementById('totalCount');

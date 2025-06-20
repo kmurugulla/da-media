@@ -24,7 +24,7 @@ export async function handleContextAnalysis(request, env) {
     const analysis = await performContextAnalysis({
       path, title, content, metadata,
     }, env);
-    const recommendations = await generateAssetRecommendations(analysis, env);
+    const recommendations = await generateAssetRecommendations(analysis);
     const priorityAssets = await getPriorityAssets(analysis, env);
 
     return createSuccessResponse({
@@ -76,6 +76,7 @@ Respond with JSON:
 
       aiAnalysis = JSON.parse(aiResponse.response || '{}');
     } catch (aiError) {
+      // eslint-disable-next-line no-console
       console.warn('AI analysis failed, using fallback:', aiError);
     }
   }
@@ -146,7 +147,7 @@ function detectDocumentType(title, path, content) {
   };
 }
 
-async function generateAssetRecommendations(analysis, env) {
+async function generateAssetRecommendations(analysis) {
   const recommendations = [];
 
   const { documentType, visualNeeds } = analysis;
@@ -259,6 +260,7 @@ async function getPriorityAssets(analysis, env) {
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, 8);
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Priority assets generation failed:', error);
     return [];
   }
@@ -284,17 +286,17 @@ function getRecommendationReason(asset, analysis) {
   return 'Contextually relevant';
 }
 
-export async function handlePersonalizedRecommendations(request, env) {
+export async function handlePersonalizedRecommendations(request, _env) {
   validateMethod(request, ['POST']);
 
   try {
     const { usageData } = await request.json();
 
-    if (!env.DA_MEDIA_KV) {
+    if (!_env.DA_MEDIA_KV) {
       return createErrorResponse('KV storage not available');
     }
 
-    const recommendations = await generatePersonalizedRecommendations(usageData, env);
+    const recommendations = await generatePersonalizedRecommendations(usageData);
 
     return createSuccessResponse({
       recommendations,
@@ -307,9 +309,9 @@ export async function handlePersonalizedRecommendations(request, env) {
   }
 }
 
-async function generatePersonalizedRecommendations(usageData, env) {
+async function generatePersonalizedRecommendations(usageData) {
   try {
-    if (!env.DA_MEDIA_KV) return [];
+    // if (!_env.DA_MEDIA_KV) return [];
 
     const userPattern = usageData.context?.documentType || 'general';
     const searchQuery = usageData.session?.searchQuery;
@@ -336,6 +338,7 @@ async function generatePersonalizedRecommendations(usageData, env) {
 
     return recommendations.slice(0, 3);
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Recommendation generation failed:', error);
     return [];
   }

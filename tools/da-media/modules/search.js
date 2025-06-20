@@ -40,7 +40,7 @@ export class SearchManager {
           'image', 'external', 'internal',
           'github-actions-publish', 'github', 'actions', 'publish',
           'scan', 'trigger', 'metadata', 'preview', 'manual',
-          'unknown', 'sourceType', 'manual-demo-scan'
+          'unknown', 'sourceType', 'manual-demo-scan',
         ];
 
         if (term.length > 3
@@ -101,7 +101,8 @@ export class SearchManager {
       return [...this.assets];
     }
 
-    const stopWords = ['show', 'me', 'get', 'find', 'search', 'for', 'some', 'a', 'an', 'the', 'of', 'with', 'that', 'can', 'use', 'in', 'i', 'need', 'want', 'give', 'looking'];
+    const stopWords = ['show', 'me', 'get', 'find', 'search', 'for', 'some', 'a', 'an',
+      'the', 'of', 'with', 'that', 'can', 'use', 'in', 'i', 'need', 'want', 'give', 'looking'];
     const keywords = queryLower.split(' ')
       .filter((word) => word.length > 2 && !stopWords.includes(word));
 
@@ -113,7 +114,8 @@ export class SearchManager {
     }
 
     const filteredAssets = this.assets.filter((asset) => {
-      const searchText = `${asset.name} ${asset.category} ${(asset.tags || []).join(' ')} ${asset.description || ''}`.toLowerCase();
+      const searchText = `${asset.name} ${asset.category} ${
+        (asset.tags || []).join(' ')} ${asset.description || ''}`.toLowerCase();
 
       const hasMatch = keywords.some((keyword) => {
         const categoryMatch = asset.category.toLowerCase().includes(keyword);
@@ -139,6 +141,7 @@ export class SearchManager {
 
   getTagCount(tag) {
     return this.assets.filter((asset) => asset.name.toLowerCase().includes(tag)
-      || (asset.tags && asset.tags.some((t) => t.toLowerCase().includes(tag)))).length;
+      || (asset.tags && asset.tags.some((t) => t.toLowerCase().includes(tag))))
+      .length;
   }
 }

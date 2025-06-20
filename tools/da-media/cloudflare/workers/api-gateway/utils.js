@@ -114,13 +114,13 @@ export async function checkRateLimit(request, env, key = null) {
   const rateLimitKey = key || `${CONFIG.PREFIXES.RATE_LIMIT}${request.headers.get('CF-Connecting-IP') || 'unknown'}`;
   const currentCount = await env.DA_MEDIA_KV.get(rateLimitKey) || '0';
 
-  if (parseInt(currentCount) > CONFIG.LIMITS.RATE_LIMIT_MAX) {
+  if (parseInt(currentCount, 10) > CONFIG.LIMITS.RATE_LIMIT_MAX) {
     throw new Error('Rate limit exceeded. Please try again later.');
   }
 
   await env.DA_MEDIA_KV.put(
     rateLimitKey,
-    (parseInt(currentCount) + 1).toString(),
+    (parseInt(currentCount, 10) + 1).toString(),
     { expirationTtl: CONFIG.CACHE_TTL.RATE_LIMIT },
   );
 
@@ -195,9 +195,9 @@ export function asyncHandler(fn) {
 
 // Pagination utility
 export function parsePaginationParams(url) {
-  const page = parseInt(url.searchParams.get('page')) || 1;
+  const page = parseInt(url.searchParams.get('page'), 10) || 1;
   const limit = Math.min(
-    parseInt(url.searchParams.get('limit')) || CONFIG.LIMITS.DEFAULT_PAGE_SIZE,
+    parseInt(url.searchParams.get('limit'), 10) || CONFIG.LIMITS.DEFAULT_PAGE_SIZE,
     CONFIG.LIMITS.MAX_PAGE_SIZE,
   );
   const offset = (page - 1) * limit;
@@ -215,17 +215,17 @@ export function withTiming(response, startTime) {
 /**
  * Logging utility with structured format
  */
-export function logRequest(request, context = {}) {
-  const { method, url } = request;
-  const timestamp = new Date().toISOString();
+export function logRequest() {
+  // const { method, url } = request;
+  // const timestamp = new Date().toISOString();
 
   // Structured logging - can be connected to external logging service
-  const logData = {
-    timestamp,
-    method,
-    url: url.toString(),
-    ...context,
-  };
+  // const logData = {
+  //   timestamp,
+  //   method,
+  //   url: url.toString(),
+  //   ...context,
+  // };
 
   // Remove console.log as requested - replace with proper logging service integration
   // console.log(JSON.stringify(logData));

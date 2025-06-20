@@ -15,8 +15,8 @@ export class AssetInsertion {
     try {
       if (!this.actions) {
         // Fallback for when DA SDK is not available (development/testing)
-        console.log('Asset would be inserted:', asset);
-        alert(`Asset would be inserted: ${asset.name}\nType: ${asset.type}\nURL: ${asset.url || asset.src}`);
+        // eslint-disable-next-line no-console
+        console.warn('DA SDK not available - Asset would be inserted:', asset.name);
         return;
       }
 
@@ -150,7 +150,8 @@ export class AssetInsertion {
       const pattern = asset.responsivePattern;
 
       if (pattern.sources && pattern.sources.length > 0) {
-        const matchingSource = pattern.sources.find((source) => this.sourceMatchesDevice(source.media, device, deviceViewports));
+        const matchingSource = pattern.sources.find((source) =>
+          this.sourceMatchesDevice(source.media, device, deviceViewports));
 
         if (matchingSource && matchingSource.srcset) {
           return this.extractBestUrlFromSrcset(matchingSource.srcset, targetWidth);
@@ -176,20 +177,20 @@ export class AssetInsertion {
     const currentViewport = deviceViewports[device];
 
     if (minWidthMatch) {
-      const minWidth = parseInt(minWidthMatch[1]);
+      const minWidth = parseInt(minWidthMatch[1], 10);
       if (device === 'desktop' && currentViewport >= minWidth) return true;
       if (device === 'tablet' && currentViewport >= minWidth && minWidth <= 600) return true;
       if (device === 'mobile' && minWidth <= 480) return true;
     }
 
     if (maxWidthMatch) {
-      const maxWidth = parseInt(maxWidthMatch[1]);
+      const maxWidth = parseInt(maxWidthMatch[1], 10);
       if (device === 'mobile' && currentViewport <= maxWidth) return true;
       if (device === 'tablet' && currentViewport <= maxWidth && maxWidth >= 480) return true;
     }
 
-    if (device === 'desktop' && (!minWidthMatch || parseInt(minWidthMatch[1]) <= 600)) return true;
-    if (device === 'mobile' && (maxWidthMatch && parseInt(maxWidthMatch[1]) < 600)) return true;
+    if (device === 'desktop' && (!minWidthMatch || parseInt(minWidthMatch[1], 10) <= 600)) return true;
+    if (device === 'mobile' && (maxWidthMatch && parseInt(maxWidthMatch[1], 10) < 600)) return true;
     if (device === 'tablet') return true;
 
     return false;
@@ -208,9 +209,9 @@ export class AssetInsertion {
 
       let width = 0;
       if (urlMatch) {
-        width = parseInt(urlMatch[1]);
+        width = parseInt(urlMatch[1], 10);
       } else if (widthMatch) {
-        width = parseInt(widthMatch[1]);
+        width = parseInt(widthMatch[1], 10);
       }
 
       if (width >= targetWidth && (bestWidth === 0 || width < bestWidth)) {

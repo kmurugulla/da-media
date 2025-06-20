@@ -26,7 +26,6 @@ export function showUsageInfo(asset, triggerElement, context = null) {
       const previewUrl = buildPreviewUrl(page, context);
       const liveUrl = buildLiveUrl(page, context);
 
-      console.log('Generated URLs for page:', page.path, 'Preview:', previewUrl, 'Live:', liveUrl);
 
       return `
         <div class="usage-page-item">
@@ -72,19 +71,17 @@ export function showUsageInfo(asset, triggerElement, context = null) {
   closeBtn.addEventListener('click', () => closeUsagePopup());
 
   const actionButtons = popup.querySelectorAll('.page-action-btn');
-  console.log('Found action buttons:', actionButtons.length);
 
   actionButtons.forEach((button) => {
     button.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const url = button.getAttribute('data-url');
-      console.log('Button clicked, URL:', url);
 
       if (url && url !== 'null' && url !== 'undefined' && url !== '#') {
-        console.log('Opening URL in new tab:', url);
         window.open(url, '_blank');
       } else {
+        // eslint-disable-next-line no-console
         console.error('Invalid URL:', url);
       }
     });
@@ -118,14 +115,14 @@ function getOrgRepo(context) {
       }
     }
   } catch (e) {
-    console.warn('Failed to parse stored context');
+    // Failed to parse stored context - continue to next fallback
   }
 
   // Try to extract from Utils
   try {
     return Utils.extractOrgRepo();
   } catch (e) {
-    console.warn('Utils.extractOrgRepo failed');
+    // Utils.extractOrgRepo failed - continue to next fallback
   }
 
   // Final fallback - extract from current URL
@@ -142,7 +139,7 @@ function getOrgRepo(context) {
       }
     }
   } catch (e) {
-    console.warn('URL parsing failed');
+    // URL parsing failed - continue to error
   }
 
   throw new Error('Unable to determine org and repo');
@@ -166,9 +163,9 @@ function buildPreviewUrl(page, context) {
     }
 
     const previewUrl = `https://${branch}--${repo}--${org}.aem.page${cleanPath}`;
-    console.log('Built preview URL:', previewUrl);
     return previewUrl;
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Error building preview URL:', error);
     return '#';
   }
@@ -192,9 +189,9 @@ function buildLiveUrl(page, context) {
     }
 
     const liveUrl = `https://${branch}--${repo}--${org}.aem.live${cleanPath}`;
-    console.log('Built live URL:', liveUrl);
     return liveUrl;
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Error building live URL:', error);
     return '#';
   }

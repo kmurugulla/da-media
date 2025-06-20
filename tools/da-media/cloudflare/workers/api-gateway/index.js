@@ -4,23 +4,18 @@
  */
 
 import {
-  CORS_HEADERS,
   JSON_HEADERS,
   CONFIG,
   createSuccessResponse,
   createErrorResponse,
   handleCORSPreflight,
   validateMethod,
-  checkRateLimit,
-  generateCacheKey,
-  formatFileSize,
-  logRequest,
   asyncHandler,
 } from './utils.js';
 import { APIRouter } from './router.js';
-import { handleHealthCheck } from './handlers/health.js';
+// import { handleHealthCheck } from './handlers/health.js';
 import { handleGetImages, handleGetHighQualityImages } from './handlers/images.js';
-import { handleGetExternalAssets, handleCleanJunkAssets } from './handlers/external-assets.js';
+// import { handleGetExternalAssets } from './handlers/external-assets.js';
 import {
   handleCleanupPreview,
   handleCleanJunkAssets as handleCleanupJunkAssets,
@@ -38,7 +33,7 @@ import { handlePreviewContentScan } from './handlers/preview-scan.js';
 const router = new APIRouter();
 
 // Add CORS middleware
-router.use(async (request, env, ctx) => {
+router.use(async (request) => {
   if (request.method === 'OPTIONS') {
     return handleCORSPreflight();
   }
@@ -48,11 +43,7 @@ router.use(async (request, env, ctx) => {
 /**
  * Add logging middleware
  */
-router.use(async (request, env, ctx) => {
-  const start = Date.now();
-  const { method } = request;
-  const { pathname } = new URL(request.url);
-
+router.use(async () => {
   return null;
 });
 
@@ -62,33 +53,33 @@ router.use(async (request, env, ctx) => {
 // ============================================================================
 
 // Generate deterministic hash ID from URL using 12-character hex for multi-million asset capacity
-function generateHashId(url) {
-  // Enhanced hash function for better distribution and collision resistance
-  const str = url.toLowerCase().trim();
-  let hash1 = 5381;
-  let hash2 = 5381;
-  let hash3 = 5381;
-
-  // Triple DJB2 hash algorithm for maximum entropy
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash1 = ((hash1 << 5) + hash1) + char;
-    hash2 = ((hash2 << 3) + hash2) ^ char;
-    hash3 = ((hash3 << 7) + hash3) + (char * 31);
-  }
-
-  // Combine all three hashes for maximum collision resistance
-  const combined1 = Math.abs(hash1 ^ hash2);
-  const combined2 = Math.abs(hash2 ^ hash3);
-  const combined3 = Math.abs(hash1 ^ hash3);
-
-  // Generate 12-character hex ID for multi-million asset capacity
-  const part1 = combined1.toString(16).padStart(4, '0').substring(0, 4);
-  const part2 = combined2.toString(16).padStart(4, '0').substring(0, 4);
-  const part3 = combined3.toString(16).padStart(4, '0').substring(0, 4);
-
-  return `${part1}${part2}${part3}`;
-}
+// function generateHashId(url) {
+//   // Enhanced hash function for better distribution and collision resistance
+//   const str = url.toLowerCase().trim();
+//   let hash1 = 5381;
+//   let hash2 = 5381;
+//   let hash3 = 5381;
+//
+//   // Triple DJB2 hash algorithm for maximum entropy
+//   for (let i = 0; i < str.length; i++) {
+//     const char = str.charCodeAt(i);
+//     hash1 = ((hash1 << 5) + hash1) + char;
+//     hash2 = ((hash2 << 3) + hash2) ^ char;
+//     hash3 = ((hash3 << 7) + hash3) + (char * 31);
+//   }
+//
+//   // Combine all three hashes for maximum collision resistance
+//   const combined1 = Math.abs(hash1 ^ hash2);
+//   const combined2 = Math.abs(hash2 ^ hash3);
+//   const combined3 = Math.abs(hash1 ^ hash3);
+//
+//   // Generate 12-character hex ID for multi-million asset capacity
+//   const part1 = combined1.toString(16).padStart(4, '0').substring(0, 4);
+//   const part2 = combined2.toString(16).padStart(4, '0').substring(0, 4);
+//   const part3 = combined3.toString(16).padStart(4, '0').substring(0, 4);
+//
+//   return `${part1}${part2}${part3}`;
+// }
 
 // Fast analyzed images endpoint - optimized for performance
 async function handleAnalyzedImagesFast(request, env) {
@@ -419,96 +410,91 @@ function getAssetTypeFromUrl(url) {
 // ============================================================================
 
 // Debug endpoint for KV inspection
-async function handleDebugKV(request, env) {
-  validateMethod(request, ['GET']);
-
-  try {
-    if (!env.DA_MEDIA_KV) {
-      return createErrorResponse('KV storage not available', {
-        status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      });
-    }
-
-    const url = new URL(request.url);
-    const key = url.searchParams.get('key');
-    const prefix = url.searchParams.get('prefix') || 'image:';
-    const limit = parseInt(url.searchParams.get('limit') || '10');
-
-    if (key) {
-      // Get specific key
-      const fullKey = key.startsWith('image:') ? key : `image:${key}`;
-      const data = await env.DA_MEDIA_KV.get(fullKey, 'json');
-
-      if (!data) {
-        return createErrorResponse(`Key not found: ${fullKey}`, {
-          status: CONFIG.HTTP_STATUS.NOT_FOUND,
-        });
-      }
-
-      return createSuccessResponse({
-        key: fullKey,
-        data,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // List keys with prefix - check both org-aware and legacy
-    let keys = [];
-
-    if (prefix === 'image:') {
-      // For image prefix, check org-aware keys first
-      const orgKeys = await env.DA_MEDIA_KV.list({ prefix: 'org:', limit: limit * 2 });
-      const imageKeys = orgKeys.keys.filter((key) => key.name.includes(':image:'));
-
-      if (imageKeys.length > 0) {
-        keys = imageKeys.slice(0, limit);
-      } else {
-        // Fallback to legacy keys
-        const legacyKeys = await env.DA_MEDIA_KV.list({ prefix, limit });
-        keys = legacyKeys.keys;
-      }
-    } else {
-      // For other prefixes, use as-is
-      const result = await env.DA_MEDIA_KV.list({ prefix, limit });
-      keys = result.keys;
-    }
-
-    // Get sample data for first few keys
-    const samplePromises = keys.slice(0, 5).map(async (keyInfo) => {
-      const data = await env.DA_MEDIA_KV.get(keyInfo.name, 'json');
-      return {
-        key: keyInfo.name,
-        id: data?.id,
-        src: data?.src,
-        displayName: data?.displayName,
-        isExternal: data?.isExternal,
-        sourceType: data?.sourceType || 'unknown',
-      };
-    });
-
-    const sampleData = await Promise.all(samplePromises);
-
-    return createSuccessResponse({
-      totalKeys: keys.length,
-      prefix,
-      keys: keys.map((k) => k.name),
-      sampleData,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Debug KV failed:', error);
-    return createErrorResponse(error, {
-      status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
-      message: 'Failed to inspect KV storage',
-    });
-  }
-}
-
-// Health endpoint
-router.get('/health', asyncHandler(handleHealthCheck));
-
-// Debug endpoint
-router.get('/api/debug/kv', asyncHandler(handleDebugKV));
+// async function handleDebugKV(request, env) {
+//   validateMethod(request, ['GET']);
+//
+//   try {
+//     if (!env.DA_MEDIA_KV) {
+//       return createErrorResponse('KV storage not available', {
+//         status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
+//       });
+//     }
+//
+//     const url = new URL(request.url);
+//     const key = url.searchParams.get('key');
+//     const prefix = url.searchParams.get('prefix') || 'image:';
+//     const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+//
+//     if (key) {
+//       // Get specific key
+//       const fullKey = key.startsWith('image:') ? key : `image:${key}`;
+//       const data = await env.DA_MEDIA_KV.get(fullKey, 'json');
+//
+//       if (!data) {
+//         return createErrorResponse(`Key not found: ${fullKey}`, {
+//           status: CONFIG.HTTP_STATUS.NOT_FOUND,
+//         });
+//       }
+//
+//       return createSuccessResponse({
+//         key: fullKey,
+//         data,
+//         timestamp: new Date().toISOString(),
+//       });
+//     }
+//
+//     // List keys with prefix - check both org-aware and legacy
+//     let keys = [];
+//
+//     if (prefix === 'image:') {
+//       // For image prefix, check org-aware keys first
+//       const orgKeys = await env.DA_MEDIA_KV.list({ prefix: 'org:', limit: limit * 2 });
+//       const imageKeys = orgKeys.keys.filter((key) => key.name.includes(':image:'));
+//
+//       if (imageKeys.length > 0) {
+//         keys = imageKeys.slice(0, limit);
+//       } else {
+//         // Fallback to legacy keys
+//         const legacyKeys = await env.DA_MEDIA_KV.list({ prefix, limit });
+//         keys = legacyKeys.keys;
+//       }
+//     } else {
+//       // For other prefixes, use as-is
+//       const result = await env.DA_MEDIA_KV.list({ prefix, limit });
+//       keys = result.keys;
+//     }
+//
+//     // Get sample data for first few keys
+//     const samplePromises = keys.slice(0, 5).map(async (keyInfo) => {
+//       const data = await env.DA_MEDIA_KV.get(keyInfo.name, 'json');
+//       return {
+//         key: keyInfo.name,
+//         id: data?.id,
+//         src: data?.src,
+//         displayName: data?.displayName,
+//         isExternal: data?.isExternal,
+//         sourceType: data?.sourceType || 'unknown',
+//       };
+//     });
+//
+//     const sampleData = await Promise.all(samplePromises);
+//
+//     return createSuccessResponse({
+//       totalKeys: keys.length,
+//       prefix,
+//       keys: keys.map((k) => k.name),
+//       sampleData,
+//       timestamp: new Date().toISOString(),
+//     });
+//   } catch (error) {
+//     // eslint-disable-next-line no-console
+//     console.error('Debug KV failed:', error);
+//     return createErrorResponse(error, {
+//       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
+//       message: 'Failed to inspect KV storage',
+//     });
+//   }
+// }
 
 // Image endpoints with improved naming and quality filtering
 router.register('OPTIONS', '/api/images', () => handleCORSPreflight());
@@ -517,8 +503,8 @@ router.get('/api/images', asyncHandler(handleGetImages));
 router.get('/api/images/high-quality', asyncHandler(handleGetHighQualityImages));
 
 // External assets with improved data quality
-router.get('/api/external-assets', asyncHandler(handleGetExternalAssets));
-router.post('/api/external-assets/cleanup', asyncHandler(handleCleanJunkAssets));
+router.get('/api/external-assets', asyncHandler(handleExternalAssets));
+router.post('/api/external-assets/cleanup', asyncHandler(handleCleanupJunkAssets));
 
 // Phase 4: Comprehensive Data Cleanup Endpoints
 router.post('/api/cleanup/preview', asyncHandler(handleCleanupPreview));
@@ -535,7 +521,7 @@ router.post('/api/personalized-recommendations', asyncHandler(handlePersonalized
 router.get('/api/analyzed-images-fast', asyncHandler(handleAnalyzedImagesFast));
 
 // Placeholder endpoints that return "coming soon" messages
-const comingSoonHandler = (endpointName) => async (request, env) => createSuccessResponse({
+const comingSoonHandler = (endpointName) => async () => createSuccessResponse({
   message: `${endpointName} endpoint - refactoring in progress`,
   status: 'coming_soon',
   originalEndpoint: endpointName,

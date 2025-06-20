@@ -383,7 +383,7 @@ export async function handleCleanDuplicates(request, env) {
 
     let deletionCount = 0;
 
-    for (const [signature, duplicates] of duplicateGroups) {
+    for (const [, duplicates] of duplicateGroups) {
       if (duplicates.length < 2) continue;
 
       cleanupResults.duplicatesFound += duplicates.length - 1;
@@ -548,9 +548,12 @@ export async function handleCleanupAnalytics(request, env) {
         },
       },
       cleanupPotential: {
-        junkCleanup: `${analytics.junkAssets} assets, ${formatBytes(analytics.estimatedWaste.junkStorage)}`,
-        qualityCleanup: `${analytics.lowQualityAssets} assets, ${formatBytes(analytics.estimatedWaste.lowQualityStorage)}`,
-        duplicateCleanup: `${analytics.duplicateAssets} assets, ${formatBytes(analytics.estimatedWaste.duplicateStorage)}`,
+        junkCleanup: `${analytics.junkAssets} assets, ${
+          formatBytes(analytics.estimatedWaste.junkStorage)}`,
+        qualityCleanup: `${analytics.lowQualityAssets} assets, ${
+          formatBytes(analytics.estimatedWaste.lowQualityStorage)}`,
+        duplicateCleanup: `${analytics.duplicateAssets} assets, ${
+          formatBytes(analytics.estimatedWaste.duplicateStorage)}`,
       },
       timestamp: new Date().toISOString(),
     });
@@ -688,11 +691,14 @@ function extractDomain(url) {
 function selectKeeperAsset(duplicates, strategy) {
   switch (strategy) {
     case 'highest_quality':
-      return duplicates.reduce((best, current) => (calculateQualityScore(current.src) > calculateQualityScore(best.src) ? current : best));
+      return duplicates.reduce((best, current) => (calculateQualityScore(current.src)
+        > calculateQualityScore(best.src) ? current : best));
     case 'most_recent':
-      return duplicates.reduce((best, current) => ((current.lastModified || current.createdAt || 0) > (best.lastModified || best.createdAt || 0) ? current : best));
+      return duplicates.reduce((best, current) => ((current.lastModified || current.createdAt || 0)
+        > (best.lastModified || best.createdAt || 0) ? current : best));
     case 'smallest_size':
-      return duplicates.reduce((best, current) => (estimateAssetSize(current) < estimateAssetSize(best) ? current : best));
+      return duplicates.reduce((best, current) => (estimateAssetSize(current)
+        < estimateAssetSize(best) ? current : best));
     default:
       return duplicates[0];
   }

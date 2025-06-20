@@ -6,7 +6,7 @@
 import { asyncHandler, createSuccessResponse, CONFIG } from './utils.js';
 
 // Route definitions with handlers
-const routes = new Map();
+// const routes = new Map();
 
 // Router class for clean route management
 export class APIRouter {
@@ -135,7 +135,9 @@ export class APIRouter {
       error: 'Route not found',
       message: `No handler found for ${method} ${pathname}`,
       availableRoutes: Array.from(this.routes.keys()),
-    }, { status: CONFIG.HTTP_STATUS.NOT_FOUND });
+    }, {
+      status: CONFIG.HTTP_STATUS.NOT_FOUND,
+    });
   }
 
   // Get API information
@@ -192,7 +194,8 @@ export function createRouter() {
 
   // Content scanning
   router.post('/api/scan-preview-content', (request, env) => handlers.handlePreviewContentScan(request, env));
-  router.get('/api/test-responsive-extraction', (request, env) => handlers.handleTestResponsiveExtraction(request, env));
+  router.get('/api/test-responsive-extraction', (request, env) =>
+    handlers.handleTestResponsiveExtraction(request, env));
 
   // Image management
   router.get('/api/analyzed-images', (request, env) => handlers.handleAnalyzedImagesRequest(request, env));

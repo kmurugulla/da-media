@@ -195,6 +195,7 @@ function loadDelayed() {
 
 async function loadSidekick() {
   if (document.querySelector('aem-sidekick')) {
+    // eslint-disable-next-line import/no-cycle
     import('./sidekick.js');
     return;
   }
@@ -212,17 +213,20 @@ async function loadPage() {
 }
 
 // UE Editor support before page load
-if (window.location.hostname.includes('ue.da.live')) {
-  // eslint-disable-next-line import/no-unresolved
-  await import(`${window.hlx.codeBasePath}/ue/scripts/ue.js`).then(({ default: ue }) => ue());
-}
+(async () => {
+  if (window.location.hostname.includes('ue.da.live')) {
+    // eslint-disable-next-line import/no-unresolved
+    await import(`${window.hlx.codeBasePath}/ue/scripts/ue.js`).then(({ default: ue }) => ue());
+  }
+})();
 
 loadPage();
 
 const { searchParams, origin } = new URL(window.location.href);
 const branch = searchParams.get('nx') || 'main';
 
-export const NX_ORIGIN = branch === 'local' || origin.includes('localhost') ? 'http://localhost:6456/nx' : 'https://da.live/nx';
+export const NX_ORIGIN = branch === 'local' || origin.includes('localhost')
+  ? 'http://localhost:6456/nx' : 'https://da.live/nx';
 
 (async function loadDa() {
   /* eslint-disable import/no-unresolved */

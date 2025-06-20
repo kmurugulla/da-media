@@ -20,7 +20,7 @@ export async function handleGetExternalAssets(request, env) {
   const site = url.searchParams.get('site');
   const org = url.searchParams.get('org');
   const cleanJunk = url.searchParams.get('clean') !== 'false'; // Default to true
-  const minQuality = parseInt(url.searchParams.get('min_quality')) || 30;
+  const minQuality = parseInt(url.searchParams.get('min_quality'), 10) || 30;
   const groupBy = url.searchParams.get('group_by') || 'domain'; // domain, category, priority
 
   if (!site || !org) {
@@ -98,7 +98,9 @@ export async function handleGetExternalAssets(request, env) {
         domains: new Set(externalAssets.map((a) => a.domain)).size,
         highPriority: externalAssets.filter((a) => a.migrationPriority === 'high').length,
         estimatedTotalSavings: externalAssets.reduce((sum, asset) => sum + (asset.estimatedSavings || 0), 0),
-        averageQualityScore: Math.round(externalAssets.reduce((sum, a) => sum + a.qualityScore, 0) / externalAssets.length),
+        averageQualityScore: Math.round(
+          externalAssets.reduce((sum, a) => sum + a.qualityScore, 0) / externalAssets.length,
+        ),
       },
       qualityStats,
       insights,

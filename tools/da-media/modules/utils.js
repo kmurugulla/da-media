@@ -340,7 +340,8 @@ export class Utils {
       }
     }
 
-    const error = 'Unable to determine organization and repository. Please ensure you are running in a proper AEM environment.';
+    const error = 'Unable to determine organization and repository. '
+      + 'Please ensure you are running in a proper AEM environment.';
     throw new Error(error);
   }
 }

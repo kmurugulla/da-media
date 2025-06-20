@@ -28,6 +28,7 @@ export async function handlePreviewContentScan(request, env) {
       });
     }
 
+    // eslint-disable-next-line no-console
     console.log(`🔍 Scanning preview content: ${previewUrl}`);
 
     // Fetch the preview content
@@ -100,10 +101,12 @@ export async function handlePreviewContentScan(request, env) {
       timestamp: new Date().toISOString(),
     };
 
+    // eslint-disable-next-line no-console
     console.log(`✅ Preview scan complete: ${processedImages.length}/${extractedImages.length} images processed`);
 
     return createSuccessResponse(result);
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Preview content scan failed:', error);
     return createErrorResponse(error, {
       status: CONFIG.HTTP_STATUS.INTERNAL_ERROR,
@@ -140,8 +143,8 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
       src: decodeHtmlEntities(resolveImageUrl(src, pageContext)),
       originalSrc: decodeHtmlEntities(src),
       alt: altMatch ? decodeHtmlEntities(altMatch[1]) : '',
-      width: widthMatch ? parseInt(widthMatch[1]) : null,
-      height: heightMatch ? parseInt(heightMatch[1]) : null,
+      width: widthMatch ? parseInt(widthMatch[1], 10) : null,
+      height: heightMatch ? parseInt(heightMatch[1], 10) : null,
       context: pageContext.path,
       foundAt: new Date().toISOString(),
       sourceType: 'img-tag',
@@ -205,7 +208,10 @@ async function extractImagesFromHTML(htmlContent, pageContext) {
     }
   }
 
-  console.log(`🔍 Extracted ${images.length} images: ${images.filter((i) => i.sourceType === 'img-tag').length} from img tags, ${images.filter((i) => i.sourceType.includes('external')).length} from external links`);
+  // eslint-disable-next-line no-console
+  console.log(`🔍 Extracted ${images.length} images: ${
+    images.filter((i) => i.sourceType === 'img-tag').length} from img tags, ${
+    images.filter((i) => i.sourceType.includes('external')).length} from external links`);
 
   return images;
 }
@@ -262,7 +268,7 @@ async function processImageFromPreview(imageData, pageContext, env) {
     id: imageId,
     src: imageData.src,
     originalSrc: imageData.originalSrc,
-    displayName: generateDisplayName(imageData, pageContext),
+    displayName: generateDisplayName(imageData),
     originalAltText: imageData.alt,
     dimensions: {
       width: imageData.width,
@@ -353,7 +359,7 @@ function generateConsistentHash(str) {
 /**
  * Generate display name for image
  */
-function generateDisplayName(imageData, pageContext) {
+function generateDisplayName(imageData) {
   // Use alt text if available
   if (imageData.alt && imageData.alt.trim()) {
     return imageData.alt.trim();
@@ -440,10 +446,10 @@ function isImageUrl(url) {
 /**
  * Extract filename from path
  */
-function extractFilenameFromPath(path) {
-  if (!path) return 'Untitled Image';
-  return path.split('/').pop() || 'Untitled Image';
-}
+// function extractFilenameFromPath(path) {
+//   if (!path) return 'Untitled Image';
+//   return path.split('/').pop() || 'Untitled Image';
+// }
 
 /**
  * Decode HTML entities in URLs and text
