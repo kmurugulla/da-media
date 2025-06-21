@@ -20,9 +20,7 @@ function createStateManager() {
     state.sessionId = generateSessionId();
     await ensureStorageStructure();
 
-    // Trigger preview actions to convert sheets to JSON format
-    // This is essential for DA to recognize them as proper sheets
-    await triggerSheetPreviews();
+    // Files are automatically accessible via content.da.live - no preview needed!
   }
 
   /**
@@ -211,10 +209,17 @@ function createStateManager() {
     const daFormat = {
       ':names': ['queue', 'metadata'],
       ':type': 'multi-sheet',
+      ':version': 3,
       'queue': {
+        'total': 0,
+        'limit': 0,
+        'offset': 0,
         'data': [],
       },
       'metadata': {
+        'total': 0,
+        'limit': 0,
+        'offset': 0,
         'data': [],
       },
     };
@@ -225,7 +230,20 @@ function createStateManager() {
       metadataRows: daFormat.metadata.data.length,
     });
 
-    return saveToFile(`/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-discovery-queue.json`, daFormat);
+    const filePath = `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-discovery-queue.json`;
+    const result = await saveToFile(filePath, daFormat);
+
+    // Check if file is automatically accessible via content.da.live without preview
+    if (result) {
+      // eslint-disable-next-line no-console
+      console.log('🔍 About to check content availability for media-discovery-queue.json...');
+      await checkContentAvailability('.da/media-discovery-queue.json');
+    } else {
+      // eslint-disable-next-line no-console
+      console.log('⚠️ File save failed, skipping content availability check');
+    }
+
+    return result;
   }
 
   /**
@@ -321,65 +339,16 @@ function createStateManager() {
    */
   async function createInitialSheetFiles() {
     const sheetConfigs = [
-      // Test with your exact working structure first
-      {
-        path: `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/test-working-format.json`,
-        structure: {
-          ':names': ['permissions', 'options'],
-          ':type': 'multi-sheet',
-          'permissions': {
-            'data': [{
-              'path': '/**',
-              'groups': '2345B0EA551D747/4711,123',
-              'actions': 'read',
-            },
-            {
-              'path': '/**',
-              'groups': '2345B0EA551D747/8080',
-              'actions': 'write',
-            },
-            {
-              'path': '/foo',
-              'groups': '2345B0EA551D747/4711',
-              'actions': 'write',
-            },
-            {
-              'path': '/bar',
-              'groups': '2345B0EA551D747/4711',
-              'actions': '',
-            }],
-          },
-          'options': {
-            'data': [{
-              'path': '/**',
-              'groups': '2345B0EA551D747/4711,123',
-              'actions': 'read',
-            },
-            {
-              'path': '/**',
-              'groups': '2345B0EA551D747/8080',
-              'actions': 'write',
-            },
-            {
-              'path': '/foo',
-              'groups': '2345B0EA551D747/4711',
-              'actions': 'write',
-            },
-            {
-              'path': '/bar',
-              'groups': '2345B0EA551D747/4711',
-              'actions': '',
-            }],
-          },
-        },
-      },
-
       {
         path: `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-scan-state.json`,
         structure: {
           ':names': ['state', 'progress'],
           ':type': 'multi-sheet',
+          ':version': 3,
           'state': {
+            'total': 3,
+            'limit': 3,
+            'offset': 0,
             'data': [{
               'property': 'isActive',
               'value': 'false',
@@ -397,6 +366,9 @@ function createStateManager() {
             }],
           },
           'progress': {
+            'total': 3,
+            'limit': 3,
+            'offset': 0,
             'data': [{
               'metric': 'totalFolders',
               'value': '0',
@@ -418,7 +390,11 @@ function createStateManager() {
         structure: {
           ':names': ['results', 'summary'],
           ':type': 'multi-sheet',
+          ':version': 3,
           'results': {
+            'total': 1,
+            'limit': 1,
+            'offset': 0,
             'data': [{
               'path': '',
               'lastScanned': '',
@@ -428,6 +404,9 @@ function createStateManager() {
             }],
           },
           'summary': {
+            'total': 2,
+            'limit': 2,
+            'offset': 0,
             'data': [{
               'metric': 'totalDocuments',
               'value': '0',
@@ -447,7 +426,11 @@ function createStateManager() {
         structure: {
           ':names': ['queue', 'metadata'],
           ':type': 'multi-sheet',
+          ':version': 3,
           'queue': {
+            'total': 1,
+            'limit': 1,
+            'offset': 0,
             'data': [{
               'path': '',
               'priority': 'normal',
@@ -456,6 +439,9 @@ function createStateManager() {
             }],
           },
           'metadata': {
+            'total': 3,
+            'limit': 3,
+            'offset': 0,
             'data': [{
               'property': 'lastUpdated',
               'value': '',
@@ -558,9 +544,88 @@ function createStateManager() {
   }
 
   /**
-   * Trigger preview actions to convert sheets to proper JSON format
-   * This mimics what happens when you click "Preview" in DA
-   * Based on DA Pilot Sling scheduler pattern
+   * Wait for files to be fully written before triggering preview
+   * Verifies that all sheet files exist and have content
+   */
+  async function waitForFilesToBeWritten() {
+    const sheetPaths = [
+      `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-scan-state.json`,
+      `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-scan-results.json`,
+      `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-discovery-queue.json`,
+    ];
+
+    // eslint-disable-next-line no-console
+    console.log('Waiting for files to be fully written...');
+
+    for (const filePath of sheetPaths) {
+      let attempts = 0;
+      const maxAttempts = 10;
+      let fileReady = false;
+
+      while (!fileReady && attempts < maxAttempts) {
+        try {
+          const url = `${state.apiConfig.baseUrl}/source${filePath}`;
+          const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${state.apiConfig.token}` },
+          });
+
+          if (response.ok) {
+            const content = await response.text();
+            if (content.trim().length > 0) {
+              try {
+                const parsed = JSON.parse(content);
+                if (parsed[':names'] && parsed[':type'] === 'multi-sheet') {
+                  // eslint-disable-next-line no-console
+                  console.log(`✅ File ready: ${filePath} (${content.length} chars)`);
+                  fileReady = true;
+                } else {
+                  // eslint-disable-next-line no-console
+                  console.log(`⏳ File exists but not proper sheet format: ${filePath}`);
+                }
+              } catch (parseError) {
+                // eslint-disable-next-line no-console
+                console.log(`⏳ File exists but not valid JSON: ${filePath}`);
+              }
+            } else {
+              // eslint-disable-next-line no-console
+              console.log(`⏳ File exists but empty: ${filePath}`);
+            }
+          } else {
+            // eslint-disable-next-line no-console
+            console.log(`⏳ File not yet available: ${filePath} (${response.status})`);
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.log(`⏳ Error checking file: ${filePath} - ${error.message}`);
+        }
+
+        if (!fileReady) {
+          attempts += 1;
+          // eslint-disable-next-line no-console
+          console.log(`⏳ Waiting for file ${filePath} (attempt ${attempts}/${maxAttempts})...`);
+          await new Promise((resolve) => {
+            setTimeout(resolve, 1000);
+          });
+        }
+      }
+
+      if (!fileReady) {
+        // eslint-disable-next-line no-console
+        console.warn(`⚠️ File not ready after ${maxAttempts} attempts: ${filePath}`);
+      }
+    }
+
+    // Additional safety delay to ensure all files are fully committed
+    // eslint-disable-next-line no-console
+    console.log('All files checked, waiting additional 2 seconds for full write completion...');
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2000);
+    });
+  }
+
+  /**
+   * Trigger preview actions to convert sheets to accessible JSON format
+   * Only previews files that actually exist and have proper content
    */
   async function triggerSheetPreviews() {
     const sheetPaths = [
@@ -570,26 +635,50 @@ function createStateManager() {
     ];
 
     // eslint-disable-next-line no-console
-    console.log('Triggering sheet previews to convert to JSON format...');
+    console.log('Triggering sheet previews to convert to accessible JSON format...');
 
     for (const sheetPath of sheetPaths) {
       try {
-        // Build source URL first
-        const {
-          baseUrl, org, repo, token,
-        } = state.apiConfig;
-        const sourceUrl = `${baseUrl}/source/${org}/${repo}/${sheetPath}`;
+        const { org, repo, token } = state.apiConfig;
 
-        // Convert to preview URL using the DA Pilot Sling pattern
-        // Replace /source/ with preview URL and add main/ prefix to path
-        const previewUrl = sourceUrl
-          .replace(`${baseUrl}/source`, 'https://admin.hlx.page/preview')
-          .replace(`/${org}/${repo}/${sheetPath}`, `/${org}/${repo}/main/${sheetPath}`);
+        // First, verify the file exists and has proper content before trying to preview
+        const sourceUrl = `${state.apiConfig.baseUrl}/source/${org}/${repo}/${sheetPath}`;
+        const checkResponse = await fetch(sourceUrl, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        if (!checkResponse.ok) {
+          // eslint-disable-next-line no-console
+          console.log(`⏭️ Skipping preview - file doesn't exist: ${sheetPath} (${checkResponse.status})`);
+          continue;
+        }
+
+        const content = await checkResponse.text();
+        if (!content.trim()) {
+          // eslint-disable-next-line no-console
+          console.log(`⏭️ Skipping preview - file is empty: ${sheetPath}`);
+          continue;
+        }
+
+        // Verify it's proper JSON with sheet structure
+        try {
+          const parsed = JSON.parse(content);
+          if (!parsed[':names'] || parsed[':type'] !== 'multi-sheet') {
+            // eslint-disable-next-line no-console
+            console.log(`⏭️ Skipping preview - not a proper sheet: ${sheetPath}`);
+            continue;
+          }
+        } catch (parseError) {
+          // eslint-disable-next-line no-console
+          console.log(`⏭️ Skipping preview - invalid JSON: ${sheetPath}`);
+          continue;
+        }
+
+        // File is ready for preview - trigger it
+        const previewUrl = `https://admin.hlx.page/preview/${org}/${repo}/main/${sheetPath}`;
 
         // eslint-disable-next-line no-console
-        console.log(`Source URL: ${sourceUrl}`);
-        // eslint-disable-next-line no-console
-        console.log(`Preview URL: ${previewUrl}`);
+        console.log(`🔄 Previewing: ${sheetPath} -> ${previewUrl}`);
 
         const response = await fetch(previewUrl, {
           method: 'POST',
@@ -601,6 +690,9 @@ function createStateManager() {
         if (response.ok) {
           // eslint-disable-next-line no-console
           console.log(`✅ Preview successful: ${sheetPath}`);
+
+          // Verify the converted JSON is available via content.da.live
+          await verifyPreviewedContent(sheetPath);
         } else {
           // eslint-disable-next-line no-console
           console.log(`⚠️ Preview failed: ${sheetPath} (${response.status})`);
@@ -611,9 +703,9 @@ function createStateManager() {
           console.log(`Response: ${responseText.substring(0, 200)}`);
         }
 
-        // Small delay between files
+        // Small delay between requests
         await new Promise((resolve) => {
-          setTimeout(resolve, 1000);
+          setTimeout(resolve, 500);
         });
 
       } catch (error) {
@@ -624,6 +716,175 @@ function createStateManager() {
 
     // eslint-disable-next-line no-console
     console.log('Sheet preview triggers complete');
+  }
+
+  /**
+   * Verify that JSON file is accessible via content.da.live
+   * We've confirmed that preview is NOT needed - files are automatically accessible!
+   */
+  async function checkContentAvailability(sheetPath) {
+    // eslint-disable-next-line no-console
+    console.log(`🔍 Starting content availability check for: ${sheetPath}`);
+
+    try {
+      const { org, repo } = state.apiConfig;
+
+      // Build content.da.live URL
+      const contentUrl = `https://content.da.live/${org}/${repo}/${sheetPath}`;
+
+      // eslint-disable-next-line no-console
+      console.log(`🔍 Testing content availability without preview: ${contentUrl}`);
+
+      // Wait a moment for file to be available
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1000);
+      });
+
+      const response = await fetch(contentUrl);
+
+      if (response.ok) {
+        const content = await response.text();
+
+        try {
+          const parsed = JSON.parse(content);
+
+          if (parsed[':names'] && parsed[':type'] === 'multi-sheet') {
+            // eslint-disable-next-line no-console
+            console.log(`✅ File automatically accessible without preview: ${sheetPath}`);
+            // eslint-disable-next-line no-console
+            console.log(`📋 Sheet tabs available: ${parsed[':names'].join(', ')}`);
+            return true;
+          }
+          // eslint-disable-next-line no-console
+          console.log(`⚠️ File accessible but missing sheet structure: ${sheetPath}`);
+          // eslint-disable-next-line no-console
+          console.log('🔄 Triggering preview to convert to proper format...');
+          await triggerSingleFilePreview(sheetPath);
+          return false;
+
+        } catch (parseError) {
+          // eslint-disable-next-line no-console
+          console.log(`⚠️ File accessible but not valid JSON: ${sheetPath}`);
+          // eslint-disable-next-line no-console
+          console.log('🔄 Triggering preview to convert to proper format...');
+          await triggerSingleFilePreview(sheetPath);
+          return false;
+        }
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(`⚠️ File not accessible via content.da.live: ${sheetPath} (${response.status})`);
+        // eslint-disable-next-line no-console
+        console.log('🔄 Triggering preview to make it accessible...');
+        await triggerSingleFilePreview(sheetPath);
+        return false;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`❌ Error checking content availability for ${sheetPath}:`, error.message);
+      // eslint-disable-next-line no-console
+      console.log('🔄 Triggering preview as fallback...');
+      await triggerSingleFilePreview(sheetPath);
+      return false;
+    }
+  }
+
+  /**
+   * Trigger preview for a single file immediately after it's saved
+   */
+  async function triggerSingleFilePreview(sheetPath) {
+    try {
+      const { org, repo, token } = state.apiConfig;
+
+      // Wait a moment for file to be fully written
+      await new Promise((resolve) => {
+        setTimeout(resolve, 500);
+      });
+
+      const previewUrl = `https://admin.hlx.page/preview/${org}/${repo}/main/${sheetPath}`;
+
+      // eslint-disable-next-line no-console
+      console.log(`🔄 Triggering immediate preview: ${sheetPath}`);
+
+      const response = await fetch(previewUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        // eslint-disable-next-line no-console
+        console.log(`✅ Immediate preview successful: ${sheetPath}`);
+
+        // Verify the converted JSON is available
+        await verifyPreviewedContent(sheetPath);
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(`⚠️ Immediate preview failed: ${sheetPath} (${response.status})`);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`❌ Immediate preview error for ${sheetPath}:`, error.message);
+    }
+  }
+
+  /**
+   * Verify that previewed content is available via content.da.live
+   * This confirms the preview conversion was successful
+   */
+  async function verifyPreviewedContent(sheetPath) {
+    try {
+      const { org, repo } = state.apiConfig;
+
+      // Build content.da.live URL: https://content.da.live/org/repo/path
+      const contentUrl = `https://content.da.live/${org}/${repo}/${sheetPath}`;
+
+      // eslint-disable-next-line no-console
+      console.log(`🔍 Verifying previewed content: ${contentUrl}`);
+
+      // Wait a moment for preview processing to complete
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1000);
+      });
+
+      const response = await fetch(contentUrl);
+
+      if (response.ok) {
+        const content = await response.text();
+
+        try {
+          const parsed = JSON.parse(content);
+
+          // Check if it has the expected DA sheet structure
+          if (parsed[':names'] && parsed[':type'] === 'multi-sheet') {
+            // eslint-disable-next-line no-console
+            console.log(`✅ Content verified: ${sheetPath} - Available as JSON with ${parsed[':names'].length} sheets`);
+
+            // Log sheet names for confirmation
+            // eslint-disable-next-line no-console
+            console.log(`📋 Sheet tabs: ${parsed[':names'].join(', ')}`);
+
+            return true;
+          }
+          // eslint-disable-next-line no-console
+          console.log(`⚠️ Content available but missing sheet structure: ${sheetPath}`);
+          return false;
+
+        } catch (parseError) {
+          // eslint-disable-next-line no-console
+          console.log(`⚠️ Content available but not valid JSON: ${sheetPath}`);
+          return false;
+        }
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(`⚠️ Content not yet available: ${sheetPath} (${response.status})`);
+        return false;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`❌ Error verifying content for ${sheetPath}:`, error.message);
+      return false;
+    }
   }
 
   /**
@@ -739,7 +1000,11 @@ function createStateManager() {
     const daFormat = {
       ':names': ['state', 'progress'],
       ':type': 'multi-sheet',
+      ':version': 3,
       'state': {
+        'total': 3,
+        'limit': 3,
+        'offset': 0,
         'data': [{
           'property': 'isActive',
           'value': scanState.isActive ? 'true' : 'false',
@@ -757,6 +1022,9 @@ function createStateManager() {
         }],
       },
       'progress': {
+        'total': 3,
+        'limit': 3,
+        'offset': 0,
         'data': [{
           'metric': 'totalFolders',
           'value': String(scanState.progress?.totalFolders || 0),
@@ -778,7 +1046,20 @@ function createStateManager() {
       progressRows: daFormat.progress.data.length,
     });
 
-    return saveToFile(`/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-scan-state.json`, daFormat);
+    const filePath = `/${state.apiConfig.org}/${state.apiConfig.repo}/.da/media-scan-state.json`;
+    const result = await saveToFile(filePath, daFormat);
+
+    // Check if file is automatically accessible via content.da.live without preview
+    if (result) {
+      // eslint-disable-next-line no-console
+      console.log('🔍 About to check content availability for media-scan-state.json...');
+      await checkContentAvailability('.da/media-scan-state.json');
+    } else {
+      // eslint-disable-next-line no-console
+      console.log('⚠️ File save failed, skipping content availability check');
+    }
+
+    return result;
   }
 
   async function loadScanResults() {
@@ -808,10 +1089,17 @@ function createStateManager() {
     const daFormat = {
       ':names': ['results', 'summary'],
       ':type': 'multi-sheet',
+      ':version': 3,
       'results': {
+        'total': 0,
+        'limit': 0,
+        'offset': 0,
         'data': [],
       },
       'summary': {
+        'total': 0,
+        'limit': 0,
+        'offset': 0,
         'data': [],
       },
     };
@@ -944,10 +1232,12 @@ function createStateManager() {
       // eslint-disable-next-line no-console
       console.log(`Successfully saved ${filePath}`);
 
+      return true; // Return true on successful save
+
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Error saving ${filePath}:`, error);
-      throw error;
+      return false; // Return false on error
     }
   }
 
@@ -983,7 +1273,11 @@ function createStateManager() {
     clearDiscoveryQueue,
     getScanStatistics,
     cleanup,
+    waitForFilesToBeWritten,
     triggerSheetPreviews,
+    triggerSingleFilePreview,
+    checkContentAvailability,
+    verifyPreviewedContent,
     verifySheetStructure,
   };
 }
