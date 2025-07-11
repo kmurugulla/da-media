@@ -7,6 +7,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "dev:remote": "wrangler dev --remote",
     "setup": "node scripts/setup-infrastructure.js",
     "db:migrate": "wrangler d1 migrations apply da-media-library",
     "db:local": "wrangler d1 migrations apply da-media-library --local",

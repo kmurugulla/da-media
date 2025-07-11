@@ -32,7 +32,6 @@ function createDAApiService() {
     getAllHTMLFiles,
     isValidUrl,
     resolveAssetUrl,
-    isExternalAsset,
     ensureFolder,
     baseUrl: state.baseUrl,
     token: state.token,
@@ -45,7 +44,7 @@ function createDAApiService() {
       throw new Error('DA context is required');
     }
 
-    // Use context from main DA Media Basic instance (which already has token extracted)
+    // Use context from main Media Library instance (which already has token extracted)
     state.context = daContext;
     state.org = daContext.org;
     state.repo = daContext.repo;
@@ -53,40 +52,20 @@ function createDAApiService() {
     state.path = daContext.path || '/';
     state.token = daContext.token;
 
-    // eslint-disable-next-line no-console
-    console.log('DA API using context from main:', {
-      org: state.org,
-      repo: state.repo,
-      ref: state.ref,
-      path: state.path,
-      hasToken: !!state.token,
-      token: state.token ? `${state.token.substring(0, 10)}...` : 'none',
-      contextKeys: Object.keys(daContext),
-    });
-
     if (!state.org || !state.repo) {
       throw new Error('This plugin must be opened from within DA Admin.');
     }
 
     // Store context in localStorage for worker access
-    localStorage.setItem('da_media_context', JSON.stringify({
+    const key = `media_${state.org}_${state.repo}_ctx`;
+    localStorage.setItem(key, JSON.stringify({
       org: state.org,
       repo: state.repo,
       token: state.token,
     }));
 
-
     state.initialized = true;
-    // eslint-disable-next-line no-console
-    console.log('DA API service initialized successfully');
   }
-
-  // Removed fallback auth - DA SDK is the only source of truth
-
-  // Context extraction now handled by DA SDK only
-
-  // All token retrieval now happens through DA SDK only
-
 
   async function makeRequest(url, options = {}) {
     await enforceRateLimit();
@@ -141,13 +120,6 @@ function createDAApiService() {
 
   async function listPath(path = '/') {
     if (!state.org || !state.repo) {
-      // eslint-disable-next-line no-console
-      console.error('listPath called with missing org/repo:', {
-        org: state.org,
-        repo: state.repo,
-        state: { ...state },
-        stack: new Error().stack,
-      });
       throw new Error(`Cannot list path: missing org (${state.org}) or repo (${state.repo})`);
     }
 
@@ -159,9 +131,6 @@ function createDAApiService() {
     }
 
     const url = `${state.baseUrl}/list/${state.org}/${state.repo}/${cleanPath}`;
-
-    // eslint-disable-next-line no-console
-    console.log('listPath URL:', url);
 
     let data;
     try {
@@ -175,7 +144,6 @@ function createDAApiService() {
     }
 
     const items = Array.isArray(data) ? data : data.items || [];
-
     return items.map((item) => ({
       name: item.name,
       path: item.path,
@@ -183,7 +151,6 @@ function createDAApiService() {
       lastModified: item.lastModified,
     }));
   }
-
 
   async function getSource(path, ext = 'html') {
     // Use path as-is - it's the unique identifier
@@ -242,7 +209,6 @@ function createDAApiService() {
     };
   }
 
-
   function isValidUrl(string) {
     try {
       new URL(string);
@@ -269,24 +235,6 @@ function createDAApiService() {
     }
 
     return src;
-  }
-
-  function isExternalAsset(src) {
-    if (!src || !isValidUrl(src)) return false;
-
-    try {
-      const url = new URL(src);
-      const expectedDomains = [
-        `${state.repo}--${state.org}.aem.page`,
-        `${state.repo}--${state.org}.aem.live`,
-        'localhost',
-        '127.0.0.1',
-      ];
-
-      return !expectedDomains.some((domain) => url.hostname.includes(domain));
-    } catch {
-      return false;
-    }
   }
 
   async function ensureFolder(folderPath) {
@@ -319,9 +267,6 @@ function createDAApiService() {
     const { concurrent = 10, throttle = 100 } = options;
 
     try {
-      // eslint-disable-next-line no-console
-      console.log('crawlFiles called with:', { path, org: state.org, repo: state.repo });
-
       // Build full path with org/repo like fragments.js pattern
       const fullPath = `/${state.org}/${state.repo}${path}`;
 
@@ -347,17 +292,10 @@ function createDAApiService() {
       const duration = getDuration();
       const errors = getCallbackErrors();
 
-      // Files crawled successfully
-
-      if (errors.length > 0) {
-        // Some errors occurred during crawl
-      }
-
       return {
         files, duration, errors, cancelCrawl,
       };
     } catch (error) {
-      // Failed to crawl files
       throw error;
     }
   }
@@ -367,10 +305,13 @@ function createDAApiService() {
 
     const callback = (file) => {
       if (file.ext === 'html') {
+        if (typeof file.lastModified === 'undefined') {
+          return; // Skip files without a real lastModified
+        }
         htmlFiles.push({
           name: file.name,
           path: file.path,
-          lastModified: file.lastModified || Date.now(),
+          lastModified: file.lastModified, // Use only the API value
         });
       }
     };

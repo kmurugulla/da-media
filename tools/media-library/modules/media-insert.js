@@ -24,6 +24,7 @@ function createAssetInsertion() {
     init,
     insertAsset,
     selectAsset,
+    insertAssetAsLink,
     trackAssetUsage,
   };
 
@@ -44,6 +45,33 @@ function createAssetInsertion() {
       trackAssetUsage(asset);
     } catch (error) {
       // Failed to insert asset
+      throw error;
+    }
+  }
+
+  /**
+   * Insert external asset as link
+   */
+  async function insertAssetAsLink(asset) {
+    try {
+      if (!state.actions) {
+        // DA SDK not available - would insert asset as link
+        return;
+      }
+
+      // For external assets, insert as HTML anchor tag
+      const assetUrl = asset.url || asset.src;
+      const linkText = asset.name || asset.alt || extractFilenameFromUrl(assetUrl);
+      const titleText = asset.title || asset.name || asset.alt || extractFilenameFromUrl(assetUrl);
+
+      const linkHTML = `<a href="${assetUrl}" alt="${linkText}" title="${titleText}">${linkText}</a>`;
+      state.actions.sendHTML(linkHTML);
+
+      // Close library after successful insertion
+      state.actions.closeLibrary();
+
+    } catch (error) {
+      // Asset insertion failed
       throw error;
     }
   }
@@ -138,6 +166,13 @@ function createAssetInsertion() {
   <source media="(max-width: 1200px)" srcset="${baseUrl}?width=1200&format=webply&optimize=medium" />
   <img src="${baseUrl}?width=1200&format=webply&optimize=medium" alt="${altText}" />
 </picture>`;
+  }
+
+  /**
+   * Extract filename from URL
+   */
+  function extractFilenameFromUrl(_url) {
+    return 'Untitled';
   }
 
   /**

@@ -3,7 +3,7 @@
  * Manages the queue-based scanning system for enterprise-scale sites with parallel folder discovery
  */
 
-import { createMultiThreadedDiscoveryManager } from './multi-threaded-discovery-manager.js';
+import { createDiscoveryManager } from './discovery-manager.js';
 import { createStateManager } from '../services/state-manager.js';
 
 function createQueueManager() {
@@ -20,61 +20,38 @@ function createQueueManager() {
       errors: 0,
     },
     listeners: new Map(),
+    batchSize: 100, // Added for the new requestBatch method
   };
+
+  let config = null; // Store the config for later access
 
   /**
    * Initialize queue manager with persistent state and multi-threaded discovery
    */
   async function init(apiConfig) {
+    config = apiConfig; // Save the config
     try {
-      // Debug: Log what we received
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager init called with:', {
-        hasApiConfig: !!apiConfig,
-        configKeys: apiConfig ? Object.keys(apiConfig) : [],
-        hasToken: !!(apiConfig && apiConfig.token),
-        hasOrg: !!(apiConfig && apiConfig.org),
-        hasRepo: !!(apiConfig && apiConfig.repo),
-        hasBaseUrl: !!(apiConfig && apiConfig.baseUrl),
-      });
-
       // Initialize state manager
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: Initializing state manager...');
       state.stateManager = createStateManager();
       await state.stateManager.init(apiConfig);
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: State manager initialized successfully');
 
-      // Initialize multi-threaded discovery manager
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: Initializing discovery manager...');
-      state.discoveryManager = createMultiThreadedDiscoveryManager();
+      // Initialize discovery manager
+      state.discoveryManager = createDiscoveryManager();
       await state.discoveryManager.init(apiConfig);
       setupDiscoveryManagerHandlers();
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: Discovery manager initialized successfully');
 
       // Initialize media scan worker
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: Initializing scan worker...');
       state.scanWorker = new Worker('./workers/media-scan-worker.js');
       setupScanWorkerHandlers();
 
       // Initialize scan worker
       await initializeWorker(state.scanWorker, 'scan', apiConfig);
 
-      // Note: apiConfig is now passed during initialization above
-      // eslint-disable-next-line no-console
-      console.log('Queue Manager: Scan worker initialized successfully');
-
-      // Queue Manager: Initialized with persistent state and multi-threaded discovery
       return true;
 
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Queue Manager initialization failed at step:', error.message, error.stack);
-      // Queue Manager: Initialization failed
+      console.error('Queue Manager initialization failed:', error.message);
       cleanup();
       throw error;
     }
@@ -85,9 +62,11 @@ function createQueueManager() {
    */
   async function startQueueScanning(forceRescan = false) {
     if (state.isActive) {
-      // Queue Manager: Already active
       return;
     }
+
+    // Reset scan stats at the start of every scan
+    resetStats();
 
     // Check if another user is already scanning
     const isScanActive = await state.stateManager.isScanActive();
@@ -100,7 +79,9 @@ function createQueueManager() {
       await state.stateManager.acquireScanLock(forceRescan ? 'force' : 'incremental');
 
       state.isActive = true;
-      resetStats();
+
+      // Pass forceRescan to setupDiscoveryManagerHandlers
+      setupDiscoveryManagerHandlers(forceRescan);
 
       // Check for resumable discovery queue
       if (!forceRescan) {
@@ -126,7 +107,6 @@ function createQueueManager() {
       });
 
       emit('scanningStarted', { stats: state.stats, forceRescan });
-      // Queue Manager: Started persistent multi-threaded discovery and scanning
 
     } catch (error) {
       state.isActive = false;
@@ -137,9 +117,8 @@ function createQueueManager() {
   /**
    * Stop the multi-threaded discovery and scanning system with state persistence
    */
-  async function stopQueueScanning(saveState = true) {
+  async function stopQueueScanning(saveState = true, status = 'completed') {
     if (!state.isActive) {
-      // Queue Manager: Not active
       return;
     }
 
@@ -164,16 +143,15 @@ function createQueueManager() {
           scannedDocuments: state.stats.scannedPages,
           totalAssets: state.stats.totalAssets,
         });
-      } else {
-        // Clear queue if scan completed successfully
-        await state.stateManager.clearDiscoveryQueue();
       }
+      // Always clear queue after scan completes
+      await state.stateManager.clearDiscoveryQueue();
 
-      await state.stateManager.releaseScanLock();
+      await state.stateManager.setScanStatus(status);
+      await state.stateManager.releaseScanLock(status);
     }
 
-    emit('scanningStopped', { stats: state.stats, saveState });
-    // Queue Manager: Stopped persistent multi-threaded discovery and scanning
+    emit('scanningStopped', { stats: state.stats, saveState, status });
   }
 
   /**
@@ -233,32 +211,30 @@ function createQueueManager() {
     try {
       await state.stateManager.clearDiscoveryQueue();
       await state.stateManager.releaseScanLock();
-      // Queue Manager: Forced scan completion
     } catch (error) {
-      // Queue Manager: Error forcing scan completion
+      // eslint-disable-next-line no-console
+      console.error('Error forcing scan completion:', error);
     }
   }
-
 
   /**
    * Setup scan worker message handlers
    */
   function setupScanWorkerHandlers() {
-    state.scanWorker.onmessage = (event) => {
+    let remainingQueue;
+    state.scanWorker.onmessage = async (event) => {
       const { type, data } = event.data;
 
       switch (type) {
         case 'initialized':
-          // Queue Manager: Scan worker initialized
           break;
 
         case 'queueProcessingStarted':
-          // Queue Manager: Queue processing started
           emit('queueProcessingStarted', data);
           break;
 
         case 'requestBatch':
-          // No batch requests needed - documents come from discovery manager
+          await requestBatch();
           break;
 
         case 'pageScanned':
@@ -267,22 +243,27 @@ function createQueueManager() {
           state.stats.scannedPages++;
 
           // Save scan results persistently
-          if (state.stateManager && data.assets) {
+          if (state.stateManager) {
             state.stateManager.saveDocumentResults([{
-              path: data.path,
-              assets: data.assets,
+              path: data.page,
+              assets: data.assets || [],
               checksum: data.checksum,
               scanDuration: data.scanDuration,
             }]);
-
-            // Update scan progress
-            state.stateManager.updateScanProgress({
-              scannedDocuments: state.stats.scannedPages,
-              totalAssets: state.stats.totalAssets,
-            });
           }
 
-          // Queue Manager: Page scanned and saved
+          // Remove from discovery queue after scan (await to ensure sync)
+          if (data.page) {
+            await state.stateManager.removeFromDiscoveryQueue(data.page);
+          }
+
+          // Update scan progress
+          state.stateManager.updateScanProgress({
+            totalDocuments: state.stats.totalPages,
+            scannedDocuments: state.stats.scannedPages,
+            totalAssets: state.stats.totalAssets,
+          });
+
           emit('pageScanned', { ...data, stats: state.stats });
           break;
 
@@ -291,35 +272,46 @@ function createQueueManager() {
           break;
 
         case 'batchComplete':
-          // Queue Manager: Batch complete
           emit('batchComplete', { ...data, stats: state.stats });
+          // After last batch, check if queue is empty
+          remainingQueue = await state.stateManager.loadDiscoveryQueue();
+          if (!remainingQueue || remainingQueue.length === 0) {
+            // Stop the scan worker's processing loop
+            if (state.scanWorker) {
+              state.scanWorker.postMessage({
+                type: 'stopQueueProcessing',
+                data: {},
+              });
+            }
+
+            await stopQueueScanning(true, 'completed');
+          }
           break;
 
         case 'pageScanError':
           state.stats.errors++;
-          // Queue Manager: Page scan error
           emit('pageScanError', data);
           break;
 
         case 'queueProcessingStopped':
-          // Queue Manager: Queue processing stopped
           emit('queueProcessingStopped', data);
           break;
 
         case 'error':
           state.stats.errors++;
-          // Queue Manager: Scan worker error
+          if (state.stateManager) {
+            state.stateManager.setScanStatus('error');
+          }
           emit('workerError', { worker: 'scan', ...data });
           break;
 
         default:
-          // Queue Manager: Unknown scan worker message
+          // Unknown scan worker message
       }
     };
 
     state.scanWorker.onerror = (error) => {
       state.stats.errors++;
-      // Queue Manager: Scan worker error
       emit('workerError', { worker: 'scan', error: error.message });
     };
   }
@@ -327,19 +319,16 @@ function createQueueManager() {
   /**
    * Setup discovery manager event handlers
    */
-  function setupDiscoveryManagerHandlers() {
+  function setupDiscoveryManagerHandlers(forceRescan = false) {
     state.discoveryManager.on('discoveryStarted', (data) => {
-      // Queue Manager: Multi-threaded discovery started
       emit('discoveryStarted', data);
     });
 
     state.discoveryManager.on('folderProgress', (data) => {
-      // Queue Manager: Folder discovery progress
       emit('folderProgress', data);
     });
 
     state.discoveryManager.on('folderComplete', (data) => {
-      // Queue Manager: Folder discovery complete
       emit('folderComplete', data);
     });
 
@@ -348,8 +337,7 @@ function createQueueManager() {
       if (data.documents && data.documents.length > 0) {
         try {
           // Filter documents that need scanning
-          const documentsToScan = await state.stateManager.getDocumentsToScan(data.documents);
-
+          const documentsToScan = await state.stateManager.getDocumentsToScan(data.documents, forceRescan);
           if (documentsToScan.length > 0) {
             state.stats.totalPages += documentsToScan.length;
             state.stats.queuedPages += documentsToScan.length;
@@ -382,27 +370,35 @@ function createQueueManager() {
             });
           }
         } catch (error) {
-          // Queue Manager: Error processing discovered documents
           emit('documentsError', { ...data, error: error.message });
         }
       }
     });
 
-    state.discoveryManager.on('discoveryComplete', (data) => {
+    state.discoveryManager.on('discoveryComplete', async (data) => {
       state.stats.totalPages = data.totalDocuments;
-      // Queue Manager: Multi-threaded discovery complete
+      // Always send all discovered pages to scan worker after discovery
+      if (data.documents && data.documents.length > 0) {
+        state.scanWorker.postMessage({
+          type: 'processBatch',
+          data: { pages: data.documents },
+        });
+      }
+      state.stateManager.updateScanProgress({
+        totalDocuments: state.stats.totalPages,
+        scannedDocuments: state.stats.scannedPages,
+        totalAssets: state.stats.totalAssets,
+      });
       emit('discoveryComplete', { ...data, stats: state.stats });
     });
 
     state.discoveryManager.on('discoveryError', (data) => {
       state.stats.errors++;
-      // Queue Manager: Discovery error
       emit('discoveryError', data);
     });
 
     state.discoveryManager.on('folderError', (data) => {
       state.stats.errors++;
-      // Queue Manager: Folder discovery error
       emit('folderError', data);
     });
   }
@@ -475,7 +471,8 @@ function createQueueManager() {
         try {
           callback(data);
         } catch (error) {
-          // Queue Manager: Error in event listener
+          // eslint-disable-next-line no-console
+          console.error('Error in event listener:', error);
         }
       });
     }
@@ -509,7 +506,37 @@ function createQueueManager() {
 
     state.isActive = false;
     state.listeners.clear();
-    // Queue Manager: Cleanup complete
+  }
+
+  async function requestBatch() {
+    // Reload queue and results from disk
+    const discoveryQueue = await state.stateManager.loadDiscoveryQueue();
+    const results = await state.stateManager.loadScanResults();
+    const scannedPaths = new Set((results && results.length ? results.map((r) => r.path) : []));
+    // Filter out already scanned pages
+    const batch = discoveryQueue.filter((item) => item.path && !scannedPaths.has(item.path)).slice(0, state.batchSize);
+
+    if (batch.length === 0) {
+      // No more pages to scan - complete the scan
+
+      // Stop the scan worker's processing loop
+      if (state.scanWorker) {
+        state.scanWorker.postMessage({
+          type: 'stopQueueProcessing',
+          data: {},
+        });
+      }
+
+      await stopQueueScanning(true, 'completed');
+      return;
+    }
+
+    if (batch.length > 0) {
+      state.scanWorker.postMessage({
+        type: 'processBatch',
+        data: { pages: batch },
+      });
+    }
   }
 
   return {
@@ -524,7 +551,7 @@ function createQueueManager() {
     off,
     getQueueSize,
     cleanup,
-    // Expose state manager for debugging
+    getConfig: () => config, // Expose the config
     get stateManager() { return state.stateManager; },
   };
 }

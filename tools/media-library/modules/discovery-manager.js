@@ -1,9 +1,9 @@
 /**
- * Multi-Threaded Discovery Manager
+ * Discovery Manager
  * Coordinates parallel folder discovery workers for optimal document discovery performance
  */
 
-function createMultiThreadedDiscoveryManager() {
+function createDiscoveryManager() {
   const state = {
     apiConfig: null,
     folderWorkers: new Map(),
@@ -19,11 +19,11 @@ function createMultiThreadedDiscoveryManager() {
   };
 
   /**
-   * Initialize multi-threaded discovery manager
+   * Initialize discovery manager
    */
   async function init(apiConfig) {
     state.apiConfig = apiConfig;
-    // Multi-Threaded Discovery Manager: Initialized
+    // Discovery Manager: Initialized
   }
 
   /**
@@ -31,7 +31,7 @@ function createMultiThreadedDiscoveryManager() {
    */
   async function startDiscovery() {
     if (state.isRunning) {
-      // Multi-Threaded Discovery Manager: Already running
+      // Discovery Manager: Already running
       return;
     }
 
@@ -68,7 +68,7 @@ function createMultiThreadedDiscoveryManager() {
       });
 
     } catch (error) {
-      // Multi-Threaded Discovery Manager: Discovery failed
+      // Discovery Manager: Discovery failed
       emit('discoveryError', { error: error.message });
     }
   }
@@ -172,7 +172,7 @@ function createMultiThreadedDiscoveryManager() {
 
       worker.onerror = (error) => {
         state.stats.errors++;
-        // Multi-Threaded Discovery Manager: Worker error
+        // Discovery Manager: Worker error
         cleanup(workerId);
         reject(error);
       };
@@ -218,12 +218,13 @@ function createMultiThreadedDiscoveryManager() {
           name: item.name,
           path: item.path,
           ext: item.ext,
+          lastModified: item.lastModified,
         }));
 
       return { folders, files };
 
     } catch (error) {
-      // Multi-Threaded Discovery Manager: Failed to get top-level items
+      // Discovery Manager: Failed to get top-level items
       return { folders: [], files: [] };
     }
   }
@@ -266,7 +267,7 @@ function createMultiThreadedDiscoveryManager() {
     }
 
     emit('discoveryStopped', { stats: state.stats });
-    // Multi-Threaded Discovery Manager: Stopped
+    // Discovery Manager: Stopped
   }
 
   /**
@@ -332,7 +333,7 @@ function createMultiThreadedDiscoveryManager() {
         try {
           callback(data);
         } catch (error) {
-          // Multi-Threaded Discovery Manager: Error in event listener
+          // Discovery Manager: Error in event listener
         }
       });
     }
@@ -360,4 +361,4 @@ function createMultiThreadedDiscoveryManager() {
   };
 }
 
-export { createMultiThreadedDiscoveryManager };
+export { createDiscoveryManager };

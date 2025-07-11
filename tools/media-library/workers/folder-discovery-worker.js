@@ -68,12 +68,13 @@ async function discoverDocumentsInFolder(folderPath) {
 
       for (const item of items) {
         if (item.ext === 'html') {
-          // HTML document found
+          if (typeof item.lastModified === 'undefined') {
+            continue; // Skip files without a real lastModified
+          }
           documents.push({
-            path: item.path,
             name: item.name,
+            path: item.path,
             lastModified: item.lastModified,
-            folder: currentFolder,
           });
         } else if (!item.ext) {
           // Subfolder found - add to scan queue
@@ -126,7 +127,6 @@ async function listFolderContents(folderPath) {
 
   const data = await response.json();
   const items = Array.isArray(data) ? data : data.items || [];
-
   return items.map((item) => ({
     name: item.name,
     path: item.path,

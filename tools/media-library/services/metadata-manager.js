@@ -2,6 +2,70 @@
  * Create Metadata Manager
  * Handles metadata storage and retrieval in DA
  */
+// DA Sheet Utility (duplicate from state-manager.js for local use)
+const DASheetUtilLocal = {
+  build(sheetMap, options = {}) {
+    const sheetNames = Object.keys(sheetMap);
+    if (sheetNames.length === 1 && (!options.forceMultiSheet)) {
+      const name = sheetNames[0];
+      const sheet = DASheetUtilLocal._stringifySheet(sheetMap[name]);
+      return {
+        total: sheet.data.length,
+        limit: sheet.data.length,
+        offset: 0,
+        data: sheet.data,
+        ':type': 'sheet',
+      };
+    }
+    const out = {};
+    for (const name of sheetNames) {
+      const sheet = DASheetUtilLocal._stringifySheet(sheetMap[name]);
+      out[name] = {
+        total: sheet.data.length,
+        limit: sheet.data.length,
+        offset: 0,
+        data: sheet.data,
+      };
+    }
+    out[':version'] = options.version || 3;
+    out[':names'] = sheetNames;
+    out[':type'] = 'multi-sheet';
+    return out;
+  },
+  parse(json) {
+    if (json[':type'] === 'sheet') {
+      return {
+        data: {
+          data: DASheetUtilLocal._parseDataArray(json.data),
+        },
+      };
+    }
+    if (json[':type'] === 'multi-sheet') {
+      const out = {};
+      for (const name of json[':names'] || []) {
+        out[name] = {
+          data: DASheetUtilLocal._parseDataArray(json[name]?.data || []),
+        };
+      }
+      return out;
+    }
+    throw new Error('Unknown DA sheet type');
+  },
+  _stringifySheet(sheet) {
+    return {
+      ...sheet,
+      data: (sheet.data || []).map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([k, v]) => [k, v != null ? String(v) : '']),
+        ),
+      ),
+    };
+  },
+  _parseDataArray(dataArr) {
+    return Array.isArray(dataArr) ? dataArr.map((row) => ({ ...row })) : [];
+  },
+};
+
 function createMetadataManager(daApi, metadataPath) {
   const state = {
     daApi,
@@ -20,6 +84,9 @@ function createMetadataManager(daApi, metadataPath) {
     getAssetStatistics,
     exportMetadata,
     importMetadata,
+    createMetadataFile,
+    clearCache,
+    daApi: state.daApi, // Expose daApi for external access
   };
 
   async function getMetadata() {
@@ -29,15 +96,23 @@ function createMetadataManager(daApi, metadataPath) {
 
     try {
       const content = await state.daApi.getSource(state.metadataPath, '');
+
+      if (!content || content.trim() === '') {
+        // Metadata file doesn't exist, create default
+        const defaultMetadata = createDefaultMetadata();
+        await saveMetadata(defaultMetadata);
+        return defaultMetadata;
+      }
+
       const metadata = JSON.parse(content);
-
       const validatedMetadata = validateAndMigrateMetadata(metadata);
-      updateCache(validatedMetadata);
 
+      updateCache(validatedMetadata);
       return validatedMetadata;
     } catch (error) {
+      // Metadata file doesn't exist, create default
       const defaultMetadata = createDefaultMetadata();
-      updateCache(defaultMetadata);
+      await saveMetadata(defaultMetadata);
       return defaultMetadata;
     }
   }
@@ -56,18 +131,18 @@ function createMetadataManager(daApi, metadataPath) {
   async function saveMetadata(metadata) {
     try {
       const validatedMetadata = validateMetadata(metadata);
+      const jsonContent = JSON.stringify(validatedMetadata, null, 2);
 
       await ensureMetadataFolder();
-
-      const jsonContent = JSON.stringify(validatedMetadata, null, 2);
 
       await state.daApi.saveFile(state.metadataPath, jsonContent, 'text/plain');
 
       updateCache(validatedMetadata);
-
-      return validatedMetadata;
+      return true;
     } catch (error) {
-      throw new Error(`Failed to save metadata: ${error.message}`);
+      // eslint-disable-next-line no-console
+      console.error('Failed to save metadata:', error);
+      throw error;
     }
   }
 
@@ -107,16 +182,22 @@ function createMetadataManager(daApi, metadataPath) {
 
   function createDefaultMetadata() {
     return {
-      ':type': 'da-media-data',
+      ':type': 'sheet',
       ':version': '1.0.0',
-      ':names': ['config', 'scans', 'assets', 'statistics'],
+      ':sheets': ['config', 'scans', 'assets', 'statistics'],
       config: {
-        version: '1.0.0',
-        created: Date.now(),
-        lastModified: Date.now(),
-        lastFullScan: null,
-        scanBatchSize: 5,
-        scanDelay: 100,
+        total: 1,
+        offset: 0,
+        limit: 1,
+        columns: ['version', 'created', 'lastModified', 'lastFullScan', 'scanBatchSize', 'scanDelay'],
+        data: [{
+          version: '1.0.0',
+          created: Date.now(),
+          lastModified: Date.now(),
+          lastFullScan: null,
+          scanBatchSize: 5,
+          scanDelay: 100,
+        }],
       },
       scans: {
         total: 0,
@@ -133,9 +214,9 @@ function createMetadataManager(daApi, metadataPath) {
         data: [],
       },
       statistics: {
-        total: 1,
+        total: 3,
         offset: 0,
-        limit: 1,
+        limit: 3,
         columns: ['metric', 'value', 'lastUpdated'],
         data: [
           {
@@ -157,16 +238,6 @@ function createMetadataManager(daApi, metadataPath) {
       },
     };
   }
-
-  // Utility function for future use
-  // async function getStaleAssets(maxAge = 24 * 60 * 60 * 1000) {
-  //   const metadata = await getMetadata();
-  //   const now = Date.now();
-  //
-  //   return Object.values(metadata.assets || {}).filter((asset) =>
-  //     (now - asset.lastSeen) > maxAge,
-  //   );
-  // }
 
   function validateMetadata(metadata) {
     if (!metadata || typeof metadata !== 'object') {
@@ -323,6 +394,55 @@ function createMetadataManager(daApi, metadataPath) {
 
     if (!data.version) {
       throw new Error('Invalid import data: missing version field');
+    }
+  }
+
+  /**
+   * Clear the cache to force fresh data fetch
+   */
+  function clearCache() {
+    state.cache = null;
+    state.cacheTimestamp = 0;
+  }
+
+  /**
+   * Create metadata file for a document
+   */
+  async function createMetadataFile(documentPath, assets) {
+    const metadataPath = documentPath.replace(/\.html$/, '.json');
+
+    // Use DASheetUtil to build DA-compliant JSON
+    const structure = {
+      data: { data: [{ path: documentPath, assets, lastScanned: Date.now() }] },
+    };
+    const jsonToWrite = DASheetUtilLocal.build(structure);
+
+    try {
+      // Create FormData and append the JSON as a file
+      const formData = new FormData();
+      const jsonBlob = new Blob([JSON.stringify(jsonToWrite)], { type: 'application/json' });
+      formData.append('file', jsonBlob, 'data.json');
+
+      const url = `${state.daApi.baseUrl}/source${metadataPath}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.daApi.token}`,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        return true;
+      }
+      const errorText = await response.text();
+      // eslint-disable-next-line no-console
+      console.error('Error response:', errorText);
+      return false;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`❌ Error creating metadata ${metadataPath}:`, error);
+      return false;
     }
   }
 

@@ -27,9 +27,11 @@ export class AssetRenderer {
    * Create asset element using working da-media.js approach
    */
   createAssetElement(asset, isListView = false) {
+    // eslint-disable-next-line no-console
+    console.log('Rendering asset:', asset, 'index:', asset.index);
     const div = document.createElement('div');
     div.className = `asset-item ${asset.isExternal ? 'external-asset' : 'internal-asset'}`;
-    div.setAttribute('data-asset-id', asset.id);
+    div.setAttribute('data-asset-id', asset.index);
 
     // Add hover tooltip
     if (asset.altText || asset.description) {
